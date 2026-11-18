@@ -24,7 +24,7 @@ async function sha(s) {
 }
 // "tiger 482", "Tiger482" and "TIGER-482" all mean the same room.
 // Scores the server will never take: drop them from the queue instead of retrying.
-const DROP = ['bad-set', 'bad-score', 'too-many-boards'];
+const DROP = ['bad-set', 'bad-score', 'too-many-boards', 'not-allowed'];
 const normCode = s => { const m = String(s).toUpperCase().replace(/[^A-Z0-9]/g, '').match(/^([A-Z]{2,8})(\d{3})$/); return m ? m[1] + '-' + m[2] : ''; };
 
 const Room = {
@@ -43,9 +43,31 @@ const Room = {
     const code = normCode(input);
     if (!code) throw new ApiError('no-room', 404);
     const r = await call('POST', `/rooms/${code}/join`);
-    store.set('td-room', { code: r.code, player: r.player, token: r.token, nick: r.nick, ...(admin ? { admin } : {}) });
+    store.set('td-room', { code: r.code, player: r.player, token: r.token, nick: r.nick, sets: r.sets || null, ...(admin ? { admin } : {}) });
     store.set('td-room-queue', []);
     return this.current;
+  },
+  // Key sets the room prescribes (null: every set counts). Cached, so they also apply offline.
+  get sets() { const r = this.current; return (r && r.sets) || null; },
+  // Fetch the room's current settings. Resolves true when the prescribed sets changed.
+  async refresh() {
+    const r = this.current;
+    if (!r) return false;
+    let info;
+    try { info = await call('GET', `/rooms/${r.code}`, null, this.auth()); }
+    catch (err) { this.gone(err); return err.code === 'no-room' || err.code === 'no-player'; }
+    const now = this.current, sets = info.sets || null;
+    if (!now || JSON.stringify(now.sets || null) === JSON.stringify(sets)) return false;
+    store.set('td-room', { ...now, sets });
+    return true;
+  },
+  // Admin: prescribe these key sets (menu records: presets or custom sets), or null for all.
+  async setSets(list) {
+    const r = this.current;
+    const body = { sets: list && list.map(s => s.builtin ? { set: s.id } : { name: s.name, chars: s.chars, types: s.types }) };
+    const res = await call('PUT', `/rooms/${r.code}/sets`, body, r.admin);
+    store.set('td-room', { ...this.current, sets: res.sets || null });
+    return res.sets;
   },
   async rename() {
     const r = this.current, res = await call('POST', `/rooms/${r.code}/rename`, null, this.auth());

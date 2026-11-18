@@ -69,9 +69,9 @@
           <svg class="mn-graph" id="m-graph" viewBox="0 0 200 84" role="img" aria-label="Alle Tempos starten gleich und enden gleich schnell. Langsamere brauchen mehr Treffer bis dahin."></svg>
         </div>
         <div class="mn-room" id="m-room" aria-live="polite" hidden></div>
-        <h3 class="mn-sec">Vorlagen</h3>
+        <h3 class="mn-sec" id="m-sec-presets">Vorlagen</h3>
         <div class="mn-cards" id="m-presets"></div>
-        <h3 class="mn-sec own">Eigene Auswahl</h3>
+        <h3 class="mn-sec own" id="m-sec-own">Eigene Auswahl</h3>
         <div class="mn-cards" id="m-custom"></div>
         <p class="mn-small">Eigene Auswahlen und Rekorde bleiben in diesem Browser gespeichert. Rekorde zählen je Tempo.</p>
       </section>
@@ -136,6 +136,19 @@
           <div class="mn-board-list" id="m-board-list"></div>
           <div class="mn-row"><span class="mn-spacer" id="m-board-admin"></span><button type="button" class="mn-btn" id="m-board-close">Schließen</button></div>
         </div>
+      </div>
+      <div class="mn-modal" id="m-sets" hidden>
+        <form class="mn-dialog mn-sets" id="m-sets-form">
+          <h3 id="m-sets-title">Tasten für den Raum</h3>
+          <p>Lege fest, was alle im Raum üben. Alle sehen dann nur diese Karten, und nur sie zählen für die Bestenliste.</p>
+          <div class="mn-sets-mode" role="radiogroup" aria-labelledby="m-sets-title">
+            <label><input type="radio" name="m-sets-mode" value="all"> Alle Tasten erlaubt</label>
+            <label><input type="radio" name="m-sets-mode" value="some"> Nur diese:</label>
+          </div>
+          <div class="mn-setlist" id="m-sets-list"></div>
+          <p class="mn-err" id="m-sets-err" aria-live="polite"></p>
+          <div class="mn-row"><button type="button" class="mn-btn" id="m-sets-cancel">Abbrechen</button><button type="submit" class="mn-btn mn-go" id="m-sets-go">Speichern</button></div>
+        </form>
       </div>
       <div class="mn-modal" id="m-discard" hidden>
         <div class="mn-dialog" role="alertdialog" aria-labelledby="m-discard-q">

@@ -12,6 +12,7 @@ The game works without the server. With no address in `js/config.js`, rooms and 
 - Kids never type names. Nicknames are generated, and custom key sets are shown by their keys rather than their names.
 - No emails, IP addresses, cookies or device ids are stored. Player and admin tokens are stored only as SHA-256 hashes.
 - A room's leaderboard is only visible to its members. Its creator can remove players or delete the room.
+- The creator can also prescribe the key sets everyone in the room practises: up to 12 presets or their own sets. Members then see only those cards, and the server accepts room scores only for them.
 - Rooms with no joins or runs for 90 days are deleted automatically (daily cron at 03:17 UTC), along with their players and scores. Visitor counts are kept for 400 days.
 
 ## Abuse protection
@@ -56,6 +57,14 @@ To see the visitor counts, open `stats.html` on the site (for example https://ti
 
 If the game is served from another address, add it to `ORIGINS` in `wrangler.toml` and deploy again.
 
+## Database changes
+
+`schema.sql` always describes the current tables. A database created with an older version needs the files in `migrations/` that came after it, for example:
+
+```sh
+npx wrangler@4.157.0 d1 execute type-defender --remote --file migrations/0002-room-sets.sql
+```
+
 ## Local development
 
 ```sh
@@ -80,13 +89,14 @@ All routes are under `/api`. Player requests send `Authorization: Bearer <player
 | Route | What it does |
 | --- | --- |
 | `POST /rooms` | Create a room. Returns `{ code, admin }`. |
-| `GET /rooms/:code` | Room exists? Returns `{ code, players, created }`. |
+| `GET /rooms/:code` | Room settings for members. Returns `{ code, players, created, sets }` (player). |
+| `PUT /rooms/:code/sets` | `{ sets: null }` allows every key set. `{ sets: [{ set: "p-home1" }, { name, chars, types }] }` prescribes up to 12 (admin). |
 | `DELETE /rooms/:code` | Delete the room (admin). |
-| `POST /rooms/:code/join` | Join. Returns `{ player, token, nick }`. |
+| `POST /rooms/:code/join` | Join. Returns `{ player, token, nick, sets }`. |
 | `POST /rooms/:code/rename` | New generated nickname (player). |
 | `POST /rooms/:code/leave` | Leave and delete your scores (player). |
 | `DELETE /rooms/:code/players/:id` | Remove a player (admin). |
-| `POST /rooms/:code/scores` | `{ set, label, pace, score }`. Keeps the best per player, set and tempo. Returns `{ best, rank, of }` (player). |
+| `POST /rooms/:code/scores` | `{ set, label, pace, score }`. Keeps the best per player, set and tempo; refuses sets the room doesn't prescribe. Returns `{ best, rank, of }` (player). |
 | `GET /rooms/:code/scores?pace=3` | All leaderboards of one tempo, plus the player list (player). |
 | `POST /hit` | `{ kind: "visit" \| "app" \| "game" }`. Adds one to today's count. |
 | `GET /stats?days=90` | Daily counts and totals (`Authorization: Bearer <STATS_KEY>`). |

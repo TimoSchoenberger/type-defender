@@ -13,6 +13,7 @@ const MAX_ROOMS_PER_DAY = 200;
 const MAX_BOARDS = 20;         // distinct key set and tempo pairs per player
 const MAX_SCORE = 5000000;
 const SCORE_GAP = 4000;        // minimum time between two score posts from one player
+const MAX_ROOM_SETS = 12;      // key sets a room's creator can prescribe
 
 const ROOM_WORDS = ['TIGER', 'PANDA', 'KOALA', 'OTTER', 'ADLER', 'DACHS', 'HAI', 'WAL', 'LUCHS', 'IGEL', 'BIBER', 'ROBBE', 'ZEBRA', 'LAMA', 'EULE', 'GECKO', 'FALKE', 'MAUS', 'BIENE', 'KRAKE'];
 // Adjective stems take -er/-e/-es to match the animal: Blauer Fuchs, Blaue Eule, Blaues Pferd.
@@ -31,7 +32,7 @@ export default {
     const allowed = env.ORIGINS.split(',').map(s => s.trim()).includes(origin);
     const cors = allowed ? { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin' } : {};
     if (req.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Allow-Methods': 'GET, POST, DELETE', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Max-Age': '86400' } });
+      return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Max-Age': '86400' } });
     }
     try {
       const res = await route(req, env, new URL(req.url));
@@ -90,7 +91,8 @@ async function route(req, env, url) {
   const room = await env.DB.prepare('SELECT * FROM rooms WHERE code = ?').bind(code).first();
   if (!room) fail(404, 'no-room');
   const tail = p.slice(3).join('/');
-  if (tail === '' && m === 'GET') return roomInfo(env, room);
+  if (tail === '' && m === 'GET') { await player(req, env, room); return roomInfo(env, room); } // members only
+  if (tail === 'sets' && m === 'PUT') { await isAdmin(req, room); return putSets(req, env, room); }
   if (tail === '' && m === 'DELETE') { await isAdmin(req, room); await dropRoom(env, code); return json({ ok: true }); }
   if (tail === 'join' && m === 'POST') return join(env, room);
   if (tail === 'rename' && m === 'POST') return rename(env, room, await player(req, env, room));
@@ -120,7 +122,32 @@ async function createRoom(env) {
 }
 async function roomInfo(env, room) {
   const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM players WHERE room = ?').bind(room.code).first();
-  return json({ code: room.code, players: n.n, created: room.created });
+  return json({ code: room.code, players: n.n, created: room.created, sets: roomSets(room) });
+}
+
+// ---------- prescribed key sets ----------
+// null means every key set counts. Otherwise a list of presets ({ set: 'p-home1' }) and custom sets
+// ({ set: 'c-…', name, chars, types }); the server derives each custom key itself, exactly like js/room.js does.
+const roomSets = room => (room.sets ? JSON.parse(room.sets) : null);
+const customKey = async (chars, types) => 'c-' + (await hash([...chars].sort().join('') + '|' + ['letters', 'syl', 'words'].map(k => +(types[k] !== false)).join(''))).slice(0, 16);
+async function putSets(req, env, room) {
+  const b = await body(req);
+  let sets = null;
+  if (b.sets != null) {
+    if (!Array.isArray(b.sets) || !b.sets.length || b.sets.length > MAX_ROOM_SETS) fail(400, 'bad-sets');
+    sets = [];
+    for (const e of b.sets) {
+      if (e && /^p-[a-z0-9]{1,16}$/.test(e.set)) { sets.push({ set: e.set }); continue; }
+      const chars = Array.isArray(e && e.chars) ? [...new Set(e.chars.map(String).filter(c => [...c].length === 1))] : [];
+      const name = [...String((e && e.name) || '').trim()].slice(0, 24).join('');
+      if (!chars.length || chars.length > 100 || !name) fail(400, 'bad-sets');
+      const types = { letters: e.types?.letters !== false, syl: e.types?.syl !== false, words: e.types?.words !== false };
+      sets.push({ set: await customKey(chars, types), name, chars, types });
+    }
+    sets = sets.filter((e, i) => sets.findIndex(x => x.set === e.set) === i);
+  }
+  await env.DB.prepare('UPDATE rooms SET sets = ?, active = ? WHERE code = ?').bind(sets && JSON.stringify(sets), Date.now(), room.code).run();
+  return json({ sets });
 }
 async function freeNick(env, code) {
   const taken = new Set((await env.DB.prepare('SELECT nick FROM players WHERE room = ?').bind(code).all()).results.map(r => r.nick));
@@ -138,7 +165,7 @@ async function join(env, room) {
     env.DB.prepare('INSERT INTO players (id, room, nick, token, created) VALUES (?, ?, ?, ?, ?)').bind(id, room.code, nick, await hash(secret), now),
     env.DB.prepare('UPDATE rooms SET active = ? WHERE code = ?').bind(now, room.code)
   ]);
-  return json({ code: room.code, player: id, token: secret, nick }, 201);
+  return json({ code: room.code, player: id, token: secret, nick, sets: roomSets(room) }, 201);
 }
 async function rename(env, room, pl) {
   const nick = await freeNick(env, room.code);
@@ -172,6 +199,8 @@ async function postScore(req, env, room, pl) {
   const setkey = String(b.set || ''), pace = b.pace | 0, score = Math.floor(Number(b.score));
   if (!/^(p-[a-z0-9]{1,16}|c-[0-9a-f]{16})$/.test(setkey)) fail(400, 'bad-set');
   if (pace < 1 || pace > 5 || !(score > 0 && score <= MAX_SCORE)) fail(400, 'bad-score');
+  const allowed = roomSets(room);
+  if (allowed && !allowed.some(e => e.set === setkey)) fail(409, 'not-allowed');
   const label = setkey.startsWith('c-') ? [...String(b.label || '')].slice(0, 60).join('') : '';
   const now = Date.now();
   const mine = await env.DB.prepare('SELECT COUNT(*) AS n, SUM(setkey = ? AND pace = ?) AS here FROM scores WHERE room = ? AND player = ?').bind(setkey, pace, room.code, pl.id).first();
@@ -200,7 +229,7 @@ async function board(env, room, url) {
     sets.get(r.setkey).rows.push({ player: r.player, nick: r.nick, score: r.score });
   }
   const players = (await env.DB.prepare('SELECT id, nick FROM players WHERE room = ? ORDER BY created').bind(room.code).all()).results;
-  return json({ code: room.code, pace, boards: [...sets.values()], players });
+  return json({ code: room.code, pace, boards: [...sets.values()], players, sets: roomSets(room) });
 }
 
 // ---------- visitor counts ----------

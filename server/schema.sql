@@ -3,7 +3,8 @@ CREATE TABLE IF NOT EXISTS rooms (
   code TEXT PRIMARY KEY,          -- e.g. TIGER-482, what kids type to join
   admin TEXT NOT NULL,            -- SHA-256 of the creator's admin token
   created INTEGER NOT NULL,
-  active INTEGER NOT NULL         -- last join or score; rooms idle for 90 days are deleted
+  active INTEGER NOT NULL,        -- last join or score; rooms idle for 90 days are deleted
+  sets TEXT                       -- JSON list of prescribed key sets; NULL means every set counts
 );
 CREATE TABLE IF NOT EXISTS players (
   id TEXT PRIMARY KEY,

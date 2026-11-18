@@ -15,7 +15,7 @@ No account, no ads, no tracking. Works in any modern browser, can be installed a
 - A wrong key jams the cannon for a moment. Twelve correct keys in a row earn a power-up: laser, shield or multishot.
 - The run ends when the first bomb hits the city.
 - Every tempo starts at the same speed and tops out at the same speed. Slower tempos take more hits to get there, so younger kids and fast adults can play the same game.
-- **Class and family rooms:** create a room, share its code (such as `TIGER-482`) and compare records on a shared leaderboard. Everyone gets a generated nickname, so nobody has to type a name.
+- **Class and family rooms:** create a room, share its code (such as `TIGER-482`) and compare records on a shared leaderboard. Everyone gets a generated nickname, so nobody has to type a name. A teacher can prescribe which key sets everyone in the room practises.
 
 There are six styles (Neon, Pixel, Doodle, Paper, Comic, Deep Sea), each with its own art, sounds and live-synthesised music. You can switch styles at any time, even mid-game.
 

@@ -315,6 +315,17 @@
 .mn-who { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .mn-self { cursor: default; }
 .mn-self:hover { color: var(--ink); background: var(--soft); }
+.mn-dialog.mn-sets { width: min(100%, 620px); max-height: calc(100dvh - 40px); overflow: auto; }
+.mn-sets-mode { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.mn-sets-mode label, .mn-opt { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.mn-sets-mode label { font: var(--display-w) var(--seg-size)/1.1 var(--display); letter-spacing: var(--display-ls); }
+.mn-setlist { display: grid; gap: 6px; max-height: 46dvh; overflow: auto; overscroll-behavior: contain; padding: 2px; }
+.mn-opt { padding: 8px 12px; background: var(--soft); border-radius: var(--r-sm); }
+.mn-opt:has(input:checked) { color: var(--on-ink); background: var(--on); }
+.mn-opt:has(input:focus-visible), .mn-sets-mode label:has(input:focus-visible) { outline: 4px solid var(--focus); outline-offset: 2px; }
+.mn-opt input, .mn-sets-mode input { width: 20px; height: 20px; margin: 0; accent-color: var(--hi); }
+.mn-opt-name { font-weight: 700; }
+.mn-opt-keys { margin-left: auto; font-size: .88rem; opacity: .8; text-align: right; }
 .mn-dialog .mn-row .mn-spacer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-right: auto; }
 
 @media (max-width: 760px) {

@@ -63,6 +63,10 @@ const M = {
     $('m-join-cancel').addEventListener('click', () => this.closeModal());
     $('m-board').addEventListener('click', e => this.boardClick(e));
     $('m-board-close').addEventListener('click', () => this.closeModal());
+    $('m-sets-form').addEventListener('submit', e => { e.preventDefault(); this.saveSets(); });
+    $('m-sets-cancel').addEventListener('click', () => this.closeModal());
+    // Ticking a set switches to "only these"; choosing "all" leaves the ticks for later.
+    $('m-sets-list').addEventListener('change', () => { document.querySelector('[name="m-sets-mode"][value="some"]').checked = true; $('m-sets-err').textContent = ''; });
     window.addEventListener('blur', () => { if (this.held) { this.held = false; this.renderEditor(); } });
     this.load();
   },
@@ -76,7 +80,13 @@ const M = {
   },
   // A re-render after an async load replaces the focused card; put focus back unless the player moved it elsewhere.
   keepFocus() { if (this.visible && (!document.activeElement || document.activeElement === document.body)) this.refocus(); },
-  find(id) { return Keys.PRESETS.find(p => p.id === id) || this.sets.find(s => s.id === id); },
+  find(id) { return Keys.PRESETS.find(p => p.id === id) || this.sets.find(s => s.id === id) || (this.roomRecs() || []).find(s => s.id === id); },
+  // The key sets a room prescribes, as menu records; null when the player is in no room or the room allows everything.
+  roomRecs() {
+    const list = Room.enabled && Room.sets;
+    if (!list) return null;
+    return list.map(e => e.chars ? { id: e.set, name: e.name, chars: e.chars, types: e.types, room: true, note: 'Vom Raum vorgegeben' } : Keys.PRESETS.find(p => p.id === e.set)).filter(Boolean);
+  },
   bestOf(id) { return this.best[id + '@' + this.pace] || 0; },
   setBest(id, score) { const k = id + '@' + this.pace; if (score > (this.best[k] || 0)) { this.best[k] = score; DB.put('best', { id: k, score }); } },
   paceInfo() { return { rate: TD.PACE[this.pace - 1], name: PACES[this.pace - 1].name }; },
@@ -120,6 +130,13 @@ const M = {
     $('menu').scrollTop = 0;
     this.refocus(!this.fresh);
     this.onScreen?.(screen);
+    if (screen === 'home' && Room.current) this.syncRoom();
+  },
+  // The room's creator may have changed the prescribed key sets (or removed this player) since the last look.
+  async syncRoom() {
+    if (!(await Room.refresh()) || this.screen !== 'home' || this.modal) return;
+    if (!Room.current) this.roomMsg = 'Du bist nicht mehr in diesem Raum.';
+    this.renderHome(); this.keepFocus();
   },
   // Home: focus the card Enter should start (the new or last one). Editor: the menu itself, so typing goes to the keys.
   refocus(preventScroll = true) {
@@ -151,7 +168,7 @@ const M = {
     const chars = Keys.ordered([...s.chars], this.layout), best = this.bestOf(s.id);
     const keys = chars.length <= 14 ? chars.join(' ') : `${chars.length} Tasten`;
     const badge = s.id === this.fresh ? '<span class="mn-badge new">Neu!</span>' : s.id === last ? '<span class="mn-badge">Zuletzt</span>' : '';
-    const tools = s.builtin
+    const tools = this.roomRecs() ? '' : s.builtin
       ? '<button type="button" class="mn-tool" data-act="copy">✎ Anpassen</button>'
       : '<button type="button" class="mn-tool" data-act="edit">✎ Bearbeiten</button><button type="button" class="mn-tool" data-act="del">Löschen</button>';
     return `<article class="mn-card${s.builtin ? '' : ' own'}" data-id="${esc(s.id)}">${badge}
@@ -169,7 +186,12 @@ const M = {
     const last = store.get('td-last', 'p-home1');
     this.renderPace();
     this.renderRoom();
-    $('m-presets').innerHTML = Keys.PRESETS.map(p => this.card(p, last)).join('');
+    // A room with prescribed key sets shows only those; your own sets come back when you leave the room.
+    const rs = this.roomRecs();
+    $('m-sec-presets').textContent = this.label(rs ? 'Tasten für Raum ' + Room.current.code : 'Vorlagen');
+    $('m-sec-own').hidden = $('m-custom').hidden = !!rs;
+    $('m-presets').innerHTML = (rs || Keys.PRESETS).map(p => this.card(p, last)).join('');
+    if (rs) return;
     $('m-custom').innerHTML = this.sets.map(s => this.card(s, last)).join('') +
       '<article class="mn-card mn-new"><button type="button" class="mn-main" data-act="new"><span class="mn-plus" aria-hidden="true">+</span><span class="mn-name">Neue Auswahl</span><span class="mn-note">Deine eigenen Tasten</span></button></article>';
   },
@@ -210,9 +232,11 @@ const M = {
     const acts = this.roomAsk
       ? `<span class="mn-ask">${r.admin ? 'Du verwaltest diesen Raum; danach kann ihn niemand mehr löschen. ' : ''}Wirklich verlassen? Deine Rekorde im Raum sind dann weg.</span>` +
         '<button type="button" class="mn-tool danger" data-room="leave-yes">Ja, verlassen</button><button type="button" class="mn-tool" data-room="leave-no">Nein</button>'
-      : `<button type="button" class="mn-tool" data-room="board"${dis}>🏆 Bestenliste</button><button type="button" class="mn-tool" data-room="rename"${dis}>Anderer Name</button><button type="button" class="mn-tool" data-room="leave"${dis}>Verlassen</button>`;
+      : `<button type="button" class="mn-tool" data-room="board"${dis}>🏆 Bestenliste</button>${r.admin ? `<button type="button" class="mn-tool" data-room="sets"${dis}>⌨ Tasten festlegen</button>` : ''}` +
+        `<button type="button" class="mn-tool" data-room="rename"${dis}>Anderer Name</button><button type="button" class="mn-tool" data-room="leave"${dis}>Verlassen</button>`;
+    const n = r.sets ? r.sets.length : 0, rule = n ? ` Der Raum gibt ${n === 1 ? 'eine Tastenauswahl' : n + ' Tastenauswahlen'} vor.` : '';
     el.innerHTML = `<div class="mn-room-who"><span class="mn-pace-label">Raum <b class="mn-code">${esc(r.code)}</b></span><span class="mn-room-name">${esc(this.label(r.nick))}</span>` +
-      `<p class="mn-pace-desc">So heißt du in diesem Raum.${r.admin ? ' Du hast ihn erstellt.' : ''}</p></div><div class="mn-room-act">${acts}</div>${msg}`;
+      `<p class="mn-pace-desc">So heißt du in diesem Raum.${r.admin ? ' Du hast ihn erstellt.' : ''}${rule}</p></div><div class="mn-room-act">${acts}</div>${msg}`;
   },
   focusRoom(act) { const b = $('m-room').querySelector(`[data-room="${act}"]`) || $('m-room').querySelector('[data-room]'); if (b) b.focus(); },
   async roomClick(e) {
@@ -221,6 +245,7 @@ const M = {
     const act = b.dataset.room;
     if (act === 'join') { $('m-join-input').value = ''; $('m-join-err').textContent = ''; this.openModal('m-join', 'm-join-input'); return; }
     if (act === 'board') { this.openBoard(); return; }
+    if (act === 'sets') { this.openSets(); return; }
     if (act === 'leave' || act === 'leave-no') { this.roomAsk = act === 'leave'; this.renderRoom(); this.focusRoom(this.roomAsk ? 'leave-no' : 'leave'); return; }
     const run = {
       create: async () => { const r = await Room.create(); this.roomMsg = `Neuer Raum! Gib den Code <b class="mn-code">${esc(r.code)}</b> allen, die mitspielen.`; return 'board'; },
@@ -232,7 +257,7 @@ const M = {
     let focus;
     try { focus = await run(); }
     catch (err) { Room.gone(err); this.roomMsg = esc(roomError(err)); this.roomAsk = false; focus = Room.current ? act : 'join'; }
-    this.busy = false; this.renderRoom(); this.focusRoom(focus);
+    this.busy = false; this.renderHome(); this.focusRoom(focus); // joining or leaving can change which cards show
   },
   async joinRoom() {
     const code = Room.normCode($('m-join-input').value);
@@ -241,7 +266,7 @@ const M = {
     try {
       const r = await Room.join(code);
       this.roomMsg = `Willkommen im Raum <b class="mn-code">${esc(r.code)}</b>!`;
-      this.closeModal(true); this.renderRoom(); this.focusRoom('board');
+      this.closeModal(true); this.renderHome(); this.focusRoom('board');
     } catch (err) { $('m-join-err').textContent = roomError(err); nope($('m-join-input')); $('m-join-input').focus(); }
     $('m-join-go').disabled = false;
   },
@@ -255,7 +280,7 @@ const M = {
     $('m-board-list').innerHTML = '<p class="mn-empty">Lädt …</p>'; $('m-board-admin').innerHTML = '';
     try { const d = await Room.board(pace); if (pace === this.boardPace) { this.boardData = d; this.renderBoard(); } }
     catch (err) {
-      if (!Room.current) { this.closeModal(true); this.roomMsg = esc(roomError(err)); this.renderRoom(); this.focusRoom('join'); return; }
+      if (!Room.current) { this.closeModal(true); this.roomMsg = esc(roomError(err)); this.renderHome(); this.focusRoom('join'); return; }
       $('m-board-list').innerHTML = `<p class="mn-empty">${esc(roomError(err))}</p>`;
     }
   },
@@ -263,6 +288,7 @@ const M = {
     const d = this.boardData, me = Room.current.player, admin = Room.isAdmin;
     const order = b => { const i = Keys.PRESETS.findIndex(x => x.id === b.set); return i < 0 ? 99 : i; };
     const nameOf = b => {
+      if (b.name) return b.name;
       const p = Keys.PRESETS.find(x => x.id === b.set);
       if (p) return p.name;
       const keys = Keys.ordered([...b.label], this.layout);
@@ -270,7 +296,11 @@ const M = {
     };
     // Equal scores share a place.
     const row = (r, i, rows) => `<li class="${r.player === me ? 'me' : ''}"><span class="mn-rank">${rows.findIndex(x => x.score === r.score) + 1}.</span><span class="mn-nick">${esc(this.label(r.nick))}${r.player === me ? ' (du)' : ''}</span><span class="mn-score">${r.score}</span></li>`;
-    const boards = [...d.boards].sort((a, b) => order(a) - order(b)).map(b => {
+    // With prescribed sets the board follows the room's list, including sets nobody has played yet.
+    const list = d.sets ? d.sets.map(e => ({ rows: [], label: (e.chars || []).join(''), ...d.boards.find(b => b.set === e.set), set: e.set, name: e.name }))
+      : [...d.boards].sort((a, b) => order(a) - order(b));
+    const boards = list.map(b => {
+      if (!b.rows.length) return `<section class="mn-bd"><h4>${esc(this.label(nameOf(b)))}</h4><ol><li class="gap">Noch niemand. Du kannst die erste Runde spielen!</li></ol></section>`;
       const mine = b.rows.findIndex(r => r.player === me);
       const rows = b.rows.slice(0, 10).map((r, i) => row(r, i, b.rows)).join('') + (mine >= 10 ? '<li class="gap">…</li>' + row(b.rows[mine], mine, b.rows) : '');
       return `<section class="mn-bd"><h4>${esc(this.label(nameOf(b)))}</h4><ol>${rows}</ol></section>`;
@@ -298,9 +328,39 @@ const M = {
       if ('delRoomYes' in ds) {
         const code = Room.current.code;
         await Room.destroy();
-        this.closeModal(true); this.roomMsg = `Raum <b class="mn-code">${esc(code)}</b> ist gelöscht.`; this.renderRoom(); this.focusRoom('create');
+        this.closeModal(true); this.roomMsg = `Raum <b class="mn-code">${esc(code)}</b> ist gelöscht.`; this.renderHome(); this.focusRoom('create');
       }
     } catch (err) { this.boardErr = roomError(err); ask(null, '#m-board-close'); }
+  },
+
+  // Admin: choose which key sets the room prescribes. Offers the presets, your own sets and any custom set the room already has.
+  async openSets() {
+    const cur = Room.sets, opts = Keys.PRESETS.map(p => ({ key: p.id, rec: p }));
+    for (const s of this.sets) opts.push({ key: (await Room.setKey(s)).set, rec: s });
+    for (const e of cur || []) if (e.chars && !opts.some(o => o.key === e.set)) opts.push({ key: e.set, rec: { name: e.name, chars: e.chars, types: e.types } });
+    this.setOpts = opts.filter((o, i) => opts.findIndex(x => x.key === o.key) === i);
+    $('m-sets-title').textContent = this.label('Tasten für Raum ' + Room.current.code);
+    document.querySelector(`[name="m-sets-mode"][value="${cur ? 'some' : 'all'}"]`).checked = true;
+    $('m-sets-list').innerHTML = this.setOpts.map((o, i) => {
+      const keys = Keys.ordered([...o.rec.chars], this.layout), on = cur && cur.some(e => e.set === o.key);
+      return `<label class="mn-opt"><input type="checkbox" data-i="${i}"${on ? ' checked' : ''}><span class="mn-opt-name">${esc(this.label(o.rec.name))}${o.rec.builtin ? '' : ' <small>(eigene)</small>'}</span>` +
+        `<span class="mn-opt-keys">${esc(keys.length <= 14 ? keys.join(' ') : keys.length + ' Tasten')}</span></label>`;
+    }).join('');
+    $('m-sets-err').textContent = '';
+    this.openModal('m-sets', 'm-sets-go');
+  },
+  async saveSets() {
+    const all = document.querySelector('[name="m-sets-mode"][value="all"]').checked;
+    const picked = [...$('m-sets-list').querySelectorAll('input:checked')].map(c => this.setOpts[+c.dataset.i].rec);
+    if (!all && !picked.length) { $('m-sets-err').textContent = 'Wähle mindestens eine Tastenauswahl, oder erlaube alle.'; return; }
+    if (!all && picked.length > 12) { $('m-sets-err').textContent = 'Höchstens 12 Tastenauswahlen gehen.'; return; }
+    $('m-sets-go').disabled = true;
+    try {
+      await Room.setSets(all ? null : picked);
+      this.roomMsg = all ? 'Gespeichert. Im Raum sind wieder alle Tasten erlaubt.' : 'Gespeichert. Alle im Raum sehen jetzt nur noch diese Tasten.';
+      this.closeModal(true); this.renderHome(); this.focusRoom('sets');
+    } catch (err) { Room.gone(err); $('m-sets-err').textContent = roomError(err); }
+    $('m-sets-go').disabled = false;
   },
 
   // ---------- editor ----------
@@ -406,9 +466,10 @@ const M = {
   modal: null,
   openModal(id, focus) { this.modal = id; $(id).hidden = false; $(focus).focus(); },
   closeModal(quiet) {
-    for (const id of ['m-name', 'm-discard', 'm-join', 'm-board']) $(id).hidden = true;
+    for (const id of ['m-name', 'm-discard', 'm-join', 'm-board', 'm-sets']) $(id).hidden = true;
     const was = this.modal; this.modal = null;
-    if (was && !quiet) { if (was === 'm-join' || was === 'm-board') this.focusRoom(was === 'm-join' ? 'join' : 'board'); else $('menu').focus(); }
+    const back = { 'm-join': 'join', 'm-board': 'board', 'm-sets': 'sets' }[was];
+    if (was && !quiet) { if (back) this.focusRoom(back); else $('menu').focus(); }
   },
 
   // ---------- keys ----------
