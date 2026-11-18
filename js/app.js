@@ -1,7 +1,7 @@
 /* App wiring: one full-screen stage that shows the style picker, the start menu or the game. */
 (() => {
 'use strict';
-const { Game, Sfx, Music, Menu, Keys, store } = TD;
+const { Game, Sfx, Music, Menu, Keys, Room, store } = TD;
 const byId = Object.fromEntries(TD.styles.map(s => [s.id, s]));
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = id => document.getElementById(id);
@@ -119,9 +119,22 @@ function startGame(sel) {
   const pace = Menu.paceInfo();
   arena.pace = pace.rate; arena.paceName = pace.name;
   arena.content = Keys.build(sel); arena.best = Menu.bestOf(sel.id); arena.reset();
-  arena.onOver = g => Menu.setBest(sel.id, g.best);
+  arena.onOver = g => {
+    Menu.setBest(sel.id, g.best);
+    Room.game();
+    sendToRoom(sel, Menu.pace, g);
+  };
   arena.resize(); paint();
   appEl.focus();
+}
+// In a class or family room, the run goes to the room's leaderboard and the game-over screen shows the rank.
+function sendToRoom(sel, pace, g) {
+  const room = Room.current;
+  if (!room || !g.score) return;
+  const run = g.runId = (g.runId || 0) + 1, still = () => g.over && g.runId === run;
+  Room.submit(sel, pace, g.score).then(r => {
+    if (still()) g.roomLine = r ? `Raum ${room.code}: Platz ${r.rank} von ${r.of}` : `Raum ${room.code}: wird gesendet, sobald du online bist`;
+  }).catch(() => {});
 }
 Menu.init({ onStart: startGame, onScreen: () => paint() });
 
@@ -179,6 +192,7 @@ function loop(now) {
 }
 
 paintSound();
+Room.visit(); Room.flush();
 if (saved) { setStyle(saved.id); showMenu(); } else { setStyle('comic'); showPick(); }
 for (const p of previews) safeRender(p.g);
 requestAnimationFrame(loop);

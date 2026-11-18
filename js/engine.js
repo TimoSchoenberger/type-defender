@@ -207,7 +207,9 @@ function over(c, g, o) {
   T(`${g.score} Punkte`, 32, 300, o.color);
   T(`Genauigkeit ${acc} % · Rekord ${g.best}`, 20, 342, o.color);
   if (g.paceName) T(`Tempo: ${g.paceName}`, 17, 374, o.color);
-  if (g.overT > 0.6) { c.globalAlpha = a * (0.6 + 0.4 * Math.sin(g.t * 5)); T(g.onMenu ? 'Enter: nochmal · Esc: Menü' : 'Enter oder Leertaste: nochmal', 22, 418, o.color); }
+  if (g.roomLine) T(g.roomLine, 17, 402, o.accent); // rank in the player's class or family room, filled in once the server answers
+  const hy = g.roomLine ? 444 : 418;
+  if (g.overT > 0.6) { c.globalAlpha = a * (0.6 + 0.4 * Math.sin(g.t * 5)); T(g.onMenu ? 'Enter: nochmal · Esc: Menü' : 'Enter oder Leertaste: nochmal', 22, hy, o.color); }
   c.restore();
 }
 
@@ -229,7 +231,7 @@ class Game {
       target: null, hint: null, score: 0, combo: 0, kills: 0, hits: 0, errors: 0,
       jam: 0, recoil: 0, shake: 0, flash: 0, angle: -Math.PI / 2,
       weapon: 'cannon', weaponT: 0, powerIdx: 0, shield: false, shieldVis: 0, shieldT: 0,
-      letThrough: null, over: false, overT: 0, spawnT: 0.6, aiT: 0.8, nid: 1
+      letThrough: null, over: false, overT: 0, roomLine: '', spawnT: 0.6, aiT: 0.8, nid: 1
     });
     if (this.mode === 'auto') for (const y of [80, 190, 290, 380]) { const b = this.spawn(); if (b) b.y = y; }
   }

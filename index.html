@@ -68,6 +68,7 @@
           </div>
           <svg class="mn-graph" id="m-graph" viewBox="0 0 200 84" role="img" aria-label="Alle Tempos starten gleich und enden gleich schnell. Langsamere brauchen mehr Treffer bis dahin."></svg>
         </div>
+        <div class="mn-room" id="m-room" aria-live="polite" hidden></div>
         <h3 class="mn-sec">Vorlagen</h3>
         <div class="mn-cards" id="m-presets"></div>
         <h3 class="mn-sec own">Eigene Auswahl</h3>
@@ -119,6 +120,23 @@
           <div class="mn-row"><button type="button" class="mn-btn" id="m-name-cancel">Abbrechen</button><button type="submit" class="mn-btn mn-go">Speichern</button></div>
         </form>
       </div>
+      <div class="mn-modal" id="m-join" hidden>
+        <form class="mn-dialog" id="m-join-form">
+          <h3 id="m-join-title">Raum beitreten</h3>
+          <p>Gib den Code ein, den du bekommen hast.</p>
+          <input id="m-join-input" maxlength="16" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-labelledby="m-join-title" aria-describedby="m-join-err" placeholder="z. B. TIGER-482">
+          <p class="mn-err" id="m-join-err" aria-live="polite"></p>
+          <div class="mn-row"><button type="button" class="mn-btn" id="m-join-cancel">Abbrechen</button><button type="submit" class="mn-btn mn-go" id="m-join-go">Beitreten</button></div>
+        </form>
+      </div>
+      <div class="mn-modal" id="m-board" hidden>
+        <div class="mn-dialog mn-board" role="dialog" aria-labelledby="m-board-title" tabindex="-1">
+          <h3 id="m-board-title">Bestenliste</h3>
+          <div class="mn-board-pace"><button type="button" class="mn-tool" data-bp="-1" aria-label="Langsameres Tempo">‹</button><span id="m-board-pace"></span><button type="button" class="mn-tool" data-bp="1" aria-label="Schnelleres Tempo">›</button></div>
+          <div class="mn-board-list" id="m-board-list"></div>
+          <div class="mn-row"><span class="mn-spacer" id="m-board-admin"></span><button type="button" class="mn-btn" id="m-board-close">Schließen</button></div>
+        </div>
+      </div>
       <div class="mn-modal" id="m-discard" hidden>
         <div class="mn-dialog" role="alertdialog" aria-labelledby="m-discard-q">
           <h3 id="m-discard-q">Ohne Speichern zurück?</h3>
@@ -131,6 +149,7 @@
   <p class="help" id="help"></p>
 </div>
 
+<script src="js/config.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/music.js"></script>
 <script src="js/s-neon-pixel.js"></script>
@@ -138,6 +157,7 @@
 <script src="js/s-comic-sea.js"></script>
 <script src="js/keys.js"></script>
 <script src="js/db.js"></script>
+<script src="js/room.js"></script>
 <script src="js/menu.js"></script>
 <script src="js/app.js"></script>
 </body>

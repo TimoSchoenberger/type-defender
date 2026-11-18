@@ -4,8 +4,8 @@ const CACHE = 'type-defender-v1';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest',
   'css/app.css', 'css/menu.css', 'fonts/fonts.css',
-  'js/engine.js', 'js/music.js', 'js/s-neon-pixel.js', 'js/s-doodle-paper.js', 'js/s-comic-sea.js',
-  'js/keys.js', 'js/db.js', 'js/menu.js', 'js/app.js',
+  'js/config.js', 'js/engine.js', 'js/music.js', 'js/s-neon-pixel.js', 'js/s-doodle-paper.js', 'js/s-comic-sea.js',
+  'js/keys.js', 'js/db.js', 'js/room.js', 'js/menu.js', 'js/app.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'
 ];
 

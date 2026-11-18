@@ -15,6 +15,7 @@ No account, no ads, no tracking. Works in any modern browser, can be installed a
 - A wrong key jams the cannon for a moment. Twelve correct keys in a row earn a power-up: laser, shield or multishot.
 - The run ends when the first bomb hits the city.
 - Every tempo starts at the same speed and tops out at the same speed. Slower tempos take more hits to get there, so younger kids and fast adults can play the same game.
+- **Class and family rooms:** create a room, share its code (such as `TIGER-482`) and compare records on a shared leaderboard. Everyone gets a generated nickname, so nobody has to type a name.
 
 There are six styles (Neon, Pixel, Doodle, Paper, Comic, Deep Sea), each with its own art, sounds and live-synthesised music. You can switch styles at any time, even mid-game.
 
@@ -29,11 +30,14 @@ The installed app starts full screen and works without an internet connection.
 
 ## Privacy
 
-Type Defender has no server. Custom key sets and records are stored in the browser (IndexedDB) and never leave the device. There are no cookies, no analytics and no third-party requests; fonts are bundled with the app. The site is hosted on GitHub Pages, so GitHub receives the usual request data (such as IP addresses) when the files are loaded; see the [GitHub privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
+- Custom key sets and personal records are stored in the browser (IndexedDB). There are no cookies, no ads and no third-party trackers, and fonts are bundled with the app.
+- The game counts visits anonymously: one count per device and day, plus one per finished run. Only the daily totals are stored, with nothing about who played.
+- Class and family rooms store generated nicknames and scores, and only for players who join a room. Rooms that stay idle for 90 days are deleted. [server/README.md](server/README.md) has the details.
+- The site is hosted on GitHub Pages and the server runs on Cloudflare Workers. Both receive the usual request data, such as IP addresses, when the game loads or talks to the server. See the [GitHub](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) and [Cloudflare](https://www.cloudflare.com/privacypolicy/) privacy policies.
 
 ## Development
 
-Plain HTML, CSS and JavaScript. There is no build step and there are no dependencies, so there is nothing to install or keep updated.
+Plain HTML, CSS and JavaScript. There is no build step and there are no dependencies, so there is nothing to install or keep updated. The optional server in `server/` is a single Cloudflare Worker without npm dependencies.
 
 ```sh
 python3 -m http.server 8000
@@ -52,11 +56,15 @@ Any static file server works. Pushing to `main` publishes the site through GitHu
 | `js/music.js` | Step sequencer that synthesises each style's song live. It gets busier as a run heats up and adds a layer during power-ups. |
 | `js/keys.js` | QWERTZ and QWERTY layouts, preset key sets, the German word list, and the code that turns a key selection into letters, syllables and words. |
 | `js/db.js` | Browser storage for custom key sets and records (IndexedDB, with a localStorage fallback). |
-| `js/menu.js` | Start menu (tempo slider, key sets, records per set and tempo) and the on-screen keyboard editor. |
+| `js/menu.js` | Start menu (tempo slider, room panel and leaderboard, key sets, records per set and tempo) and the on-screen keyboard editor. |
+| `js/room.js` | Client for class and family rooms and the anonymous visit count. Scores played offline are queued and sent later. |
+| `js/config.js` | The server address. Leave it empty to turn rooms and counting off. |
 | `js/app.js` | Wiring: style picker, menu, game, keyboard routing, music and the service worker. |
 | `sw.js` | Offline support. Network first, cache as the fallback, so updates arrive on the next load. |
 | `manifest.webmanifest`, `icons/` | Install metadata and app icons. |
 | `fonts/` | Self-hosted fonts (SIL Open Font License). |
+| `stats.html` | Visitor counts for the maintainer (needs the server's `STATS_KEY`). |
+| `server/` | Cloudflare Worker and database schema for rooms and counts. See [server/README.md](server/README.md). |
 
 Ideas and bug reports are welcome as issues. Pull requests are welcome too; by contributing you agree that your contribution is published under the same license.
 

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Type Defender Zahlen</title>
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+/* Visitor counts for the maintainer. Needs the STATS_KEY secret of the server; it is kept in this browser only. */
+:root {
+  --bg: #f4f5f8; --card: #fff; --ink: #151a29; --mute: #5d6678; --line: #dde1e8; --bar: #2f6fdb; --bar2: #f0a020; --focus: #2f6fdb;
+  --ui: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif; --title: Fredoka, var(--ui);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0d1017; --card: #171b24; --ink: #e9ecf3; --mute: #9ba3b5; --line: #2a3141; --bar: #7fb0ff; --bar2: #ffc34d; --focus: #7fb0ff; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0d1017; --card: #171b24; --ink: #e9ecf3; --mute: #9ba3b5; --line: #2a3141; --bar: #7fb0ff; --bar2: #ffc34d; --focus: #7fb0ff; color-scheme: dark; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 1rem/1.5 var(--ui); padding: 0 16px; }
+main { max-width: 860px; margin: 0 auto; padding: 32px 0 48px; display: grid; gap: 20px; }
+h1 { margin: 0; font: 600 2rem/1.1 var(--title); }
+p { margin: 0; }
+.mute { color: var(--mute); }
+form { display: flex; flex-wrap: wrap; gap: 8px; }
+input { flex: 1 1 240px; padding: 10px 12px; font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+button { padding: 10px 16px; font: 700 1rem/1 var(--ui); color: #fff; background: var(--bar); border: 0; border-radius: 8px; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.tile { padding: 14px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.tile b { display: block; font: 600 1.9rem/1.1 var(--title); font-variant-numeric: tabular-nums; }
+.tile span { font-size: .88rem; color: var(--mute); }
+table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 12px; text-align: right; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; white-space: nowrap; }
+th { font-size: .82rem; color: var(--mute); font-weight: 700; }
+td.bar { width: 40%; text-align: left; }
+td.bar i { display: block; height: 10px; border-radius: 5px; background: var(--bar); min-width: 2px; }
+tr:last-child td { border-bottom: 0; }
+.err { color: #d23a2f; font-weight: 700; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Type Defender in Zahlen</h1>
+  <p class="mute">„Geräte“ zählt jedes Gerät einmal pro Tag. Über mehrere Tage addiert, zählt ein Gerät, das an fünf Tagen spielt, fünfmal. Gespeichert werden nur diese Tageszahlen, nichts über die Personen.</p>
+  <form id="f"><input id="key" type="password" autocomplete="current-password" placeholder="Statistik-Schlüssel (STATS_KEY)" aria-label="Statistik-Schlüssel"><button>Anzeigen</button></form>
+  <p id="msg" class="mute" aria-live="polite"></p>
+  <section id="out" hidden>
+    <div class="tiles" id="tiles"></div>
+    <h2 class="mute" style="font-size:1rem;margin:20px 0 8px">Die letzten 30 Tage</h2>
+    <table><thead><tr><th>Tag</th><th>Geräte</th><th>davon App</th><th>Runden</th><th>neue Räume</th><th aria-hidden="true"></th></tr></thead><tbody id="rows"></tbody></table>
+  </section>
+</main>
+<script src="js/config.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const api = (() => { try { return JSON.parse(localStorage.getItem('td-api')) || window.TD_API; } catch (e) { return window.TD_API; } })().replace(/\/+$/, '');
+  const read = () => { try { return localStorage.getItem('td-stats-key') || ''; } catch (e) { return ''; } };
+  const keep = k => { try { localStorage.setItem('td-stats-key', k); } catch (e) { /* private window */ } };
+  const fmt = n => n.toLocaleString('de-DE');
+  async function load(key) {
+    if (!api) { $('msg').innerHTML = '<span class="err">In js/config.js ist noch keine Server-Adresse eingetragen.</span>'; return; }
+    $('msg').textContent = 'Lädt …';
+    let data;
+    try {
+      const res = await fetch(api + '/api/stats?days=400', { headers: { Authorization: 'Bearer ' + key } });
+      if (res.status === 401) { $('msg').innerHTML = '<span class="err">Der Schlüssel stimmt nicht.</span>'; return; }
+      data = await res.json();
+    } catch (e) { $('msg').innerHTML = '<span class="err">Der Server ist nicht erreichbar.</span>'; return; }
+    keep(key);
+    const byDay = new Map();
+    for (const r of data.days) { if (!byDay.has(r.day)) byDay.set(r.day, {}); byDay.get(r.day)[r.kind] = r.n; }
+    const day = i => new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    const sum = (kind, n) => { let s = 0; for (let i = 0; i < n; i++) s += (byDay.get(day(i)) || {})[kind] || 0; return s; };
+    $('tiles').innerHTML = [
+      [sum('visit', 1), 'Geräte heute'], [sum('visit', 7), 'Geräte-Tage, 7 Tage'], [sum('visit', 30), 'Geräte-Tage, 30 Tage'],
+      [sum('game', 30), 'Runden, 30 Tage'], [data.rooms, 'Räume gerade'], [data.players, 'Mitspieler in Räumen']
+    ].map(([n, l]) => `<div class="tile"><b>${fmt(n)}</b><span>${l}</span></div>`).join('');
+    const days = Array.from({ length: 30 }, (_, i) => day(i)), max = Math.max(1, ...days.map(d => (byDay.get(d) || {}).visit || 0));
+    $('rows').innerHTML = days.map(d => {
+      const r = byDay.get(d) || {}, v = r.visit || 0;
+      const label = new Date(d + 'T12:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' });
+      return `<tr><td>${label}</td><td>${fmt(v)}</td><td>${fmt(r.app || 0)}</td><td>${fmt(r.game || 0)}</td><td>${fmt(r.room || 0)}</td><td class="bar" aria-hidden="true">${v ? `<i style="width:${(100 * v) / max}%"></i>` : ''}</td></tr>`;
+    }).join('');
+    $('msg').textContent = 'Stand: ' + new Date().toLocaleString('de-DE');
+    $('out').hidden = false;
+  }
+  $('f').addEventListener('submit', e => { e.preventDefault(); load($('key').value.trim()); });
+  const k = read(); if (k) { $('key').value = k; load(k); }
+})();
+</script>
+</body>
+</html>

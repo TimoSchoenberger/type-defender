@@ -3,7 +3,7 @@
    holding Shift (or clicking it) shows the shifted layer, so capitals and signs like ! § $ % & get their own switch. */
 (() => {
 'use strict';
-const { Keys, DB, store } = TD;
+const { Keys, DB, store, Room } = TD;
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nope = el => { if (!el) return; el.classList.remove('nope'); void el.offsetWidth; el.classList.add('nope'); };
@@ -16,6 +16,15 @@ const PACES = [
   { name: 'Gepard', desc: 'Wird flott schwerer.' },
   { name: 'Rakete', desc: 'Wird schnell schwerer.' }
 ];
+const ROOM_ERRORS = {
+  offline: 'Keine Verbindung. Versuch es gleich nochmal.',
+  'no-room': 'Diesen Raum gibt es nicht (mehr). Stimmt der Code?',
+  'no-player': 'Du bist nicht mehr in diesem Raum.',
+  full: 'Der Raum ist voll.',
+  busy: 'Gerade geht das nicht. Versuch es später nochmal.',
+  'not-admin': 'Das darf nur, wer den Raum erstellt hat.'
+};
+const roomError = err => ROOM_ERRORS[err && err.code] || 'Das hat nicht geklappt. Versuch es nochmal.';
 const typesKey = (sel, types) => [...sel].sort().join('') + '|' + ['letters', 'syl', 'words'].map(t => +!!types[t]).join('');
 
 const M = {
@@ -48,6 +57,11 @@ const M = {
     $('m-name-cancel').addEventListener('click', () => this.closeModal());
     $('m-discard-no').addEventListener('click', () => this.closeModal());
     $('m-discard-yes').addEventListener('click', () => { this.closeModal(); this.show('home'); });
+    $('m-room').addEventListener('click', e => this.roomClick(e));
+    $('m-join-form').addEventListener('submit', e => { e.preventDefault(); this.joinRoom(); });
+    $('m-join-cancel').addEventListener('click', () => this.closeModal());
+    $('m-board').addEventListener('click', e => this.boardClick(e));
+    $('m-board-close').addEventListener('click', () => this.closeModal());
     window.addEventListener('blur', () => { if (this.held) { this.held = false; this.renderEditor(); } });
     this.load();
   },
@@ -117,6 +131,7 @@ const M = {
   render() {
     $('m-layer-up').textContent = this.label('A ⇧ groß');
     $('m-name-title').textContent = this.label('Wie soll deine Auswahl heißen?');
+    $('m-board-close').textContent = this.label('Schließen');
     if (this.screen === 'home') this.renderHome(); else if (this.screen === 'edit') this.renderEditor();
   },
 
@@ -152,6 +167,7 @@ const M = {
   renderHome() {
     const last = store.get('td-last', 'p-home1');
     this.renderPace();
+    this.renderRoom();
     $('m-presets').innerHTML = Keys.PRESETS.map(p => this.card(p, last)).join('');
     $('m-custom').innerHTML = this.sets.map(s => this.card(s, last)).join('') +
       '<article class="mn-card mn-new"><button type="button" class="mn-main" data-act="new"><span class="mn-plus" aria-hidden="true">+</span><span class="mn-name">Neue Auswahl</span><span class="mn-note">Deine eigenen Tasten</span></button></article>';
@@ -173,6 +189,117 @@ const M = {
       this.sets = this.sets.filter(s => s.id !== rec.id);
       this.renderHome(); const n = document.querySelector('#m-custom .mn-main'); if (n) n.focus();
     }
+  },
+
+  // ---------- class or family room ----------
+  // One panel under the tempo slider: join or create a room, or (inside one) your nickname, the leaderboard and leaving.
+  roomMsg: '', roomAsk: false, busy: false, boardPace: 3, boardData: null, boardAsk: null, boardErr: '',
+  renderRoom() {
+    const el = $('m-room');
+    el.hidden = !Room.enabled;
+    if (!Room.enabled) return;
+    const r = Room.current, dis = this.busy ? ' disabled' : '';
+    const msg = this.roomMsg ? `<p class="mn-room-msg">${this.roomMsg}</p>` : '';
+    if (!r) {
+      el.innerHTML = `<div class="mn-room-who"><span class="mn-pace-label">Klasse &amp; Familie</span><span class="mn-room-name">${esc(this.label('Zusammen spielen'))}</span>` +
+        `<p class="mn-pace-desc">Spielt in einem gemeinsamen Raum und vergleicht eure Rekorde.</p></div>` +
+        `<div class="mn-room-act"><button type="button" class="mn-tool" data-room="join"${dis}>Raum beitreten</button><button type="button" class="mn-tool" data-room="create"${dis}>Raum erstellen</button></div>${msg}`;
+      return;
+    }
+    const acts = this.roomAsk
+      ? `<span class="mn-ask">${r.admin ? 'Du verwaltest diesen Raum; danach kann ihn niemand mehr löschen. ' : ''}Wirklich verlassen? Deine Rekorde im Raum sind dann weg.</span>` +
+        '<button type="button" class="mn-tool danger" data-room="leave-yes">Ja, verlassen</button><button type="button" class="mn-tool" data-room="leave-no">Nein</button>'
+      : `<button type="button" class="mn-tool" data-room="board"${dis}>🏆 Bestenliste</button><button type="button" class="mn-tool" data-room="rename"${dis}>Anderer Name</button><button type="button" class="mn-tool" data-room="leave"${dis}>Verlassen</button>`;
+    el.innerHTML = `<div class="mn-room-who"><span class="mn-pace-label">Raum <b class="mn-code">${esc(r.code)}</b></span><span class="mn-room-name">${esc(this.label(r.nick))}</span>` +
+      `<p class="mn-pace-desc">So heißt du in diesem Raum.${r.admin ? ' Du hast ihn erstellt.' : ''}</p></div><div class="mn-room-act">${acts}</div>${msg}`;
+  },
+  focusRoom(act) { const b = $('m-room').querySelector(`[data-room="${act}"]`) || $('m-room').querySelector('[data-room]'); if (b) b.focus(); },
+  async roomClick(e) {
+    const b = e.target.closest('[data-room]');
+    if (!b || this.busy) return;
+    const act = b.dataset.room;
+    if (act === 'join') { $('m-join-input').value = ''; $('m-join-err').textContent = ''; this.openModal('m-join', 'm-join-input'); return; }
+    if (act === 'board') { this.openBoard(); return; }
+    if (act === 'leave' || act === 'leave-no') { this.roomAsk = act === 'leave'; this.renderRoom(); this.focusRoom(this.roomAsk ? 'leave-no' : 'leave'); return; }
+    const run = {
+      create: async () => { const r = await Room.create(); this.roomMsg = `Neuer Raum! Gib den Code <b class="mn-code">${esc(r.code)}</b> allen, die mitspielen.`; return 'board'; },
+      rename: async () => { await Room.rename(); return 'rename'; },
+      'leave-yes': async () => { await Room.leave(); this.roomAsk = false; this.roomMsg = 'Du hast den Raum verlassen.'; return 'join'; }
+    }[act];
+    if (!run) return;
+    this.busy = true; this.roomMsg = ''; this.renderRoom();
+    let focus;
+    try { focus = await run(); }
+    catch (err) { Room.gone(err); this.roomMsg = esc(roomError(err)); this.roomAsk = false; focus = Room.current ? act : 'join'; }
+    this.busy = false; this.renderRoom(); this.focusRoom(focus);
+  },
+  async joinRoom() {
+    const code = Room.normCode($('m-join-input').value);
+    if (!code) { $('m-join-err').textContent = 'Ein Code sieht so aus: TIGER-482'; nope($('m-join-input')); return; }
+    $('m-join-go').disabled = true;
+    try {
+      const r = await Room.join(code);
+      this.roomMsg = `Willkommen im Raum <b class="mn-code">${esc(r.code)}</b>!`;
+      this.closeModal(true); this.renderRoom(); this.focusRoom('board');
+    } catch (err) { $('m-join-err').textContent = roomError(err); nope($('m-join-input')); $('m-join-input').focus(); }
+    $('m-join-go').disabled = false;
+  },
+  openBoard() { this.boardPace = this.pace; this.boardAsk = null; this.boardErr = ''; this.boardData = null; this.openModal('m-board', 'm-board-close'); this.loadBoard(); },
+  boardStep(d) { const n = Math.min(5, Math.max(1, this.boardPace + d)); if (n !== this.boardPace) { this.boardPace = n; this.boardAsk = null; this.loadBoard(); } },
+  async loadBoard() {
+    const pace = this.boardPace;
+    $('m-board-title').textContent = this.label('Bestenliste · Raum ' + Room.current.code);
+    $('m-board-pace').textContent = 'Tempo: ' + this.label(PACES[pace - 1].name);
+    for (const b of $('m-board').querySelectorAll('[data-bp]')) b.disabled = pace + +b.dataset.bp < 1 || pace + +b.dataset.bp > 5;
+    $('m-board-list').innerHTML = '<p class="mn-empty">Lädt …</p>'; $('m-board-admin').innerHTML = '';
+    try { const d = await Room.board(pace); if (pace === this.boardPace) { this.boardData = d; this.renderBoard(); } }
+    catch (err) {
+      if (!Room.current) { this.closeModal(true); this.roomMsg = esc(roomError(err)); this.renderRoom(); this.focusRoom('join'); return; }
+      $('m-board-list').innerHTML = `<p class="mn-empty">${esc(roomError(err))}</p>`;
+    }
+  },
+  renderBoard() {
+    const d = this.boardData, me = Room.current.player, admin = Room.isAdmin;
+    const order = b => { const i = Keys.PRESETS.findIndex(x => x.id === b.set); return i < 0 ? 99 : i; };
+    const nameOf = b => {
+      const p = Keys.PRESETS.find(x => x.id === b.set);
+      if (p) return p.name;
+      const keys = Keys.ordered([...b.label], this.layout);
+      return keys.length && keys.length <= 14 ? 'Eigene: ' + keys.join(' ') : `Eigene Auswahl (${keys.length} Tasten)`;
+    };
+    // Equal scores share a place.
+    const row = (r, i, rows) => `<li class="${r.player === me ? 'me' : ''}"><span class="mn-rank">${rows.findIndex(x => x.score === r.score) + 1}.</span><span class="mn-nick">${esc(this.label(r.nick))}${r.player === me ? ' (du)' : ''}</span><span class="mn-score">${r.score}</span></li>`;
+    const boards = [...d.boards].sort((a, b) => order(a) - order(b)).map(b => {
+      const mine = b.rows.findIndex(r => r.player === me);
+      const rows = b.rows.slice(0, 10).map((r, i) => row(r, i, b.rows)).join('') + (mine >= 10 ? '<li class="gap">…</li>' + row(b.rows[mine], mine, b.rows) : '');
+      return `<section class="mn-bd"><h4>${esc(this.label(nameOf(b)))}</h4><ol>${rows}</ol></section>`;
+    }).join('');
+    const players = !admin ? '' : '<section class="mn-bd mn-players"><h4>Mitspieler</h4><div class="mn-who">' + d.players.map(p =>
+      p.id === me ? `<span class="mn-tool mn-self">${esc(this.label(p.nick))} (du)</span>`
+      : this.boardAsk === p.id ? `<span class="mn-ask">${esc(this.label(p.nick))} entfernen?</span><button type="button" class="mn-tool danger" data-kick-yes="${esc(p.id)}">Ja</button><button type="button" class="mn-tool" data-kick-no>Nein</button>`
+      : `<button type="button" class="mn-tool" data-kick="${esc(p.id)}" title="Aus dem Raum entfernen">${esc(this.label(p.nick))} ✕</button>`).join('') + '</div></section>';
+    $('m-board-list').innerHTML = (this.boardErr ? `<p class="mn-err">${esc(this.boardErr)}</p>` : '') +
+      (boards || '<p class="mn-empty">Bei diesem Tempo hat im Raum noch niemand gespielt. Spiel eine Runde, dann stehst du hier!</p>') + players;
+    $('m-board-admin').innerHTML = !admin ? ''
+      : this.boardAsk === 'room' ? '<span class="mn-ask">Raum für alle löschen?</span><button type="button" class="mn-tool danger" data-del-room-yes>Ja, löschen</button><button type="button" class="mn-tool" data-del-room-no>Nein</button>'
+      : '<button type="button" class="mn-tool danger" data-del-room>Raum löschen</button>';
+  },
+  async boardClick(e) {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const ds = b.dataset, ask = (v, focus) => { this.boardAsk = v; this.boardErr = ''; this.renderBoard(); ($('m-board').querySelector(focus) || $('m-board-close')).focus(); };
+    if (ds.bp) { this.boardStep(+ds.bp); return; }
+    if ('kick' in ds) { ask(ds.kick, '[data-kick-no]'); return; }
+    if ('delRoom' in ds) { ask('room', '[data-del-room-no]'); return; }
+    if ('kickNo' in ds || 'delRoomNo' in ds) { ask(null, '#m-board-close'); return; }
+    try {
+      if ('kickYes' in ds) { await Room.kick(ds.kickYes); this.boardAsk = null; await this.loadBoard(); $('m-board-close').focus(); }
+      if ('delRoomYes' in ds) {
+        const code = Room.current.code;
+        await Room.destroy();
+        this.closeModal(true); this.roomMsg = `Raum <b class="mn-code">${esc(code)}</b> ist gelöscht.`; this.renderRoom(); this.focusRoom('create');
+      }
+    } catch (err) { this.boardErr = roomError(err); ask(null, '#m-board-close'); }
   },
 
   // ---------- editor ----------
@@ -278,15 +405,19 @@ const M = {
   modal: null,
   openModal(id, focus) { this.modal = id; $(id).hidden = false; $(focus).focus(); },
   closeModal(quiet) {
-    for (const id of ['m-name', 'm-discard']) $(id).hidden = true;
+    for (const id of ['m-name', 'm-discard', 'm-join', 'm-board']) $(id).hidden = true;
     const was = this.modal; this.modal = null;
-    if (was && !quiet) $('menu').focus();
+    if (was && !quiet) { if (was === 'm-join' || was === 'm-board') this.focusRoom(was === 'm-join' ? 'join' : 'board'); else $('menu').focus(); }
   },
 
   // ---------- keys ----------
   keydown(e) {
     if (e.getModifierState) { const caps = e.getModifierState('CapsLock'); if (caps !== this.caps) { this.caps = caps; if (this.screen === 'edit') $('m-caps').hidden = !caps; } }
-    if (this.modal) { if (e.key === 'Escape') { e.preventDefault(); this.closeModal(); } return; }
+    if (this.modal) {
+      if (e.key === 'Escape') { e.preventDefault(); this.closeModal(); }
+      else if (this.modal === 'm-board' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); this.boardStep(e.key === 'ArrowRight' ? 1 : -1); }
+      return;
+    }
     if (this.screen === 'home') {
       if (e.key === 'Escape') { e.preventDefault(); return 'close'; }
       if (e.key === 'Enter' && !(e.target.closest && e.target.closest('button'))) { e.preventDefault(); this.refocus(false); document.activeElement?.click?.(); }

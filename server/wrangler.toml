@@ -1,0 +1,18 @@
+# Cloudflare Worker for room leaderboards and visitor counts. Setup: see server/README.md.
+name = "type-defender"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+# Pages that may call the API (the game, plus local development).
+ORIGINS = "https://timoschoenberger.github.io,http://localhost:8000,http://127.0.0.1:8000"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "type-defender"
+database_id = "local"
+
+# Daily cleanup of idle rooms and old visitor counts.
+[triggers]
+crons = ["17 3 * * *"]

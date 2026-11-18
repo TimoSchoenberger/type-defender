@@ -259,7 +259,7 @@
     radial-gradient(ellipse 50% 30% at 50% 112%, #ffd166 0 98%, transparent 100%), linear-gradient(#c9c1ff, #e4ddff);
 }
 .mn[data-look="paper"] .mn-card::before { height: 12px; border: 0; border-radius: 16px 16px 0 0; }
-.mn[data-look="paper"] .mn-best, .mn[data-look="paper"] .mn-los, .mn[data-look="paper"] .mn-badge, .mn[data-look="paper"] .mn-tool { border-color: transparent; }
+.mn[data-look="paper"] .mn-best, .mn[data-look="paper"] .mn-los, .mn[data-look="paper"] .mn-badge, .mn[data-look="paper"] .mn-tool, .mn[data-look="paper"] .mn-room-msg { border-color: transparent; }
 
 /* ---- Deep Sea: glassy panels over light rays and bubbles ---- */
 .mn[data-look="sea"] {
@@ -282,11 +282,41 @@
     linear-gradient(#2ab3c9, #0d6b93 50%, #06304f);
   color-scheme: dark;
 }
-.mn[data-look="sea"] .mn-card, .mn[data-look="sea"] .mn-pace, .mn[data-look="sea"] .mn-panel, .mn[data-look="sea"] .mn-bubble { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.mn[data-look="sea"] .mn-card, .mn[data-look="sea"] .mn-pace, .mn[data-look="sea"] .mn-room, .mn[data-look="sea"] .mn-panel, .mn[data-look="sea"] .mn-bubble { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .mn[data-look="sea"] .mn-card::before { height: 8px; border-bottom: 0; border-radius: 18px 18px 0 0; }
 .mn[data-look="sea"] .mn-bubble::before, .mn[data-look="sea"] .mn-bubble::after { display: none; }
 
 /* Narrow layouts */
+/* Class or family room: a panel under the tempo slider, plus the join and leaderboard dialogs. */
+.mn-room { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; padding: 12px 18px; background: var(--panel); border: var(--bw) solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); }
+.mn-room-who { display: grid; gap: 3px; }
+.mn-room-name { font: var(--display-w) var(--name-size)/1.05 var(--display); letter-spacing: var(--display-ls); }
+.mn-room-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mn-room-act .mn-tool { padding: 9px 14px; font-size: .95rem; }
+.mn-room-msg { flex-basis: 100%; margin: 0; padding: 8px 12px; background: var(--soft); border: 2px solid var(--line); border-radius: var(--r-sm); }
+.mn-code { padding: 1px 6px; color: var(--hi-ink); background: var(--hi); border-radius: var(--r-sm); letter-spacing: .06em; white-space: nowrap; }
+.mn-tool:disabled { opacity: .5; cursor: progress; }
+.mn-err { margin: 0; font-weight: 700; }
+.mn-err:not(:empty) { padding: 6px 10px; color: var(--accent-ink); background: var(--accent); border-radius: var(--r-sm); }
+.mn-dialog.mn-board { width: min(100%, 680px); max-height: calc(100dvh - 40px); grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.mn-board:focus { outline: none; }
+.mn-board-pace { display: flex; align-items: center; gap: 12px; font: var(--display-w) var(--seg-size)/1.1 var(--display); letter-spacing: var(--display-ls); }
+.mn-board-pace .mn-tool { padding: 4px 12px; font-size: 1.1rem; }
+.mn-board-pace .mn-tool:disabled { opacity: .35; cursor: default; }
+.mn-board-list { display: grid; gap: 14px; overflow: auto; overscroll-behavior: contain; padding: 2px 4px 2px 2px; }
+.mn-bd h4 { margin: 0 0 6px; font: var(--display-w) var(--seg-size)/1.15 var(--display); letter-spacing: var(--display-ls); }
+.mn-bd ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.mn-bd li { display: grid; grid-template-columns: 2.2em 1fr auto; align-items: center; gap: 8px; padding: 6px 10px; background: var(--soft); border-radius: var(--r-sm); }
+.mn-bd li.me { color: var(--on-ink); background: var(--on); font-weight: 700; }
+.mn-bd li.gap { display: block; padding: 0 10px; background: none; color: var(--mute); }
+.mn-rank { color: var(--mute); font-variant-numeric: tabular-nums; }
+.mn-bd li.me .mn-rank { color: inherit; }
+.mn-score { font-variant-numeric: tabular-nums; font-weight: 700; }
+.mn-who { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mn-self { cursor: default; }
+.mn-self:hover { color: var(--ink); background: var(--soft); }
+.mn-dialog .mn-row .mn-spacer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-right: auto; }
+
 @media (max-width: 760px) {
   .mn-pace { grid-template-columns: 1fr; }
   .mn-graph { width: 100%; max-width: 260px; }
