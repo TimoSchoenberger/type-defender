@@ -22,7 +22,8 @@ const ROOM_ERRORS = {
   'no-player': 'Du bist nicht mehr in diesem Raum.',
   full: 'Der Raum ist voll.',
   busy: 'Gerade geht das nicht. Versuch es später nochmal.',
-  'not-admin': 'Das darf nur, wer den Raum erstellt hat.'
+  'not-admin': 'Das darf nur, wer den Raum erstellt hat.',
+  'slow-down': 'Zu viele Versuche auf einmal. Warte kurz und versuch es dann nochmal.'
 };
 const roomError = err => ROOM_ERRORS[err && err.code] || 'Das hat nicht geklappt. Versuch es nochmal.';
 const typesKey = (sel, types) => [...sel].sort().join('') + '|' + ['letters', 'syl', 'words'].map(t => +!!types[t]).join('');

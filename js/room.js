@@ -23,6 +23,8 @@ async function sha(s) {
   return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 // "tiger 482", "Tiger482" and "TIGER-482" all mean the same room.
+// Scores the server will never take: drop them from the queue instead of retrying.
+const DROP = ['bad-set', 'bad-score', 'too-many-boards'];
 const normCode = s => { const m = String(s).toUpperCase().replace(/[^A-Z0-9]/g, '').match(/^([A-Z]{2,8})(\d{3})$/); return m ? m[1] + '-' + m[2] : ''; };
 
 const Room = {
@@ -94,8 +96,8 @@ const Room = {
       } catch (err) {
         this.gone(err);
         if (err.code === 'slow-down') setTimeout(() => this.flush(), 5000);
-        if (err.code === 'bad-set' || err.code === 'bad-score') store.set('td-room-queue', store.get('td-room-queue', []).filter(x => !(x.set === e.set && x.pace === e.pace)));
-        if (err.code !== 'bad-set' && err.code !== 'bad-score') break;
+        if (DROP.includes(err.code)) store.set('td-room-queue', store.get('td-room-queue', []).filter(x => !(x.set === e.set && x.pace === e.pace)));
+        if (!DROP.includes(err.code)) break;
       }
     }
     return out;

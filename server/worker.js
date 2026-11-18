@@ -5,8 +5,12 @@
 const DAY = 86400000;
 const IDLE_DAYS = 90;          // rooms without joins or scores for this long are deleted
 const KEEP_VISIT_DAYS = 400;
+// Hard caps bound the database size whatever happens (about 3,000 rooms × 60 players × 20 boards at most),
+// and per-IP rate limits (wrangler.toml) keep one visitor from using up the free tier's daily writes.
 const MAX_PLAYERS = 60;
-const MAX_ROOMS_PER_DAY = 500; // a brake on runaway room creation
+const MAX_ROOMS = 3000;
+const MAX_ROOMS_PER_DAY = 200;
+const MAX_BOARDS = 20;         // distinct key set and tempo pairs per player
 const MAX_SCORE = 5000000;
 const SCORE_GAP = 4000;        // minimum time between two score posts from one player
 
@@ -63,10 +67,20 @@ async function body(req) {
 }
 const bearer = req => (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
 
+// Cloudflare's rate limiter counts in memory per IP address; nothing about the visitor is stored.
+// Limits are generous because a whole school class usually shares one address.
+async function limit(env, name, req) {
+  const rl = env[name];
+  if (!rl) return;
+  const { success } = await rl.limit({ key: req.headers.get('CF-Connecting-IP') || 'local' });
+  if (!success) fail(429, 'slow-down');
+}
+
 async function route(req, env, url) {
   const p = url.pathname.replace(/\/+$/, '').split('/').filter(Boolean); // ['api', 'rooms', CODE, ...]
   const m = req.method;
   if (p[0] !== 'api') fail(404, 'not-found');
+  await limit(env, m === 'GET' ? 'LIMIT_READ' : p[1] === 'hit' ? 'LIMIT_HIT' : p.length === 2 && p[1] === 'rooms' ? 'LIMIT_CREATE' : 'LIMIT_WRITE', req);
   if (p[1] === 'hit' && m === 'POST') return hit(req, env);
   if (p[1] === 'stats' && m === 'GET') return stats(req, env, url);
   if (p[1] !== 'rooms') fail(404, 'not-found');
@@ -91,7 +105,8 @@ async function route(req, env, url) {
 async function createRoom(env) {
   const today = dayOf(Date.now());
   const made = await env.DB.prepare("SELECT n FROM visits WHERE day = ? AND kind = 'room'").bind(today).first();
-  if (made && made.n >= MAX_ROOMS_PER_DAY) fail(429, 'busy');
+  const all = await env.DB.prepare('SELECT COUNT(*) AS n FROM rooms').first();
+  if ((made && made.n >= MAX_ROOMS_PER_DAY) || all.n >= MAX_ROOMS) fail(503, 'busy');
   for (let i = 0; i < 20; i++) {
     const code = pickOne(ROOM_WORDS) + '-' + String(100 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900));
     const admin = token(), now = Date.now();
@@ -159,6 +174,8 @@ async function postScore(req, env, room, pl) {
   if (pace < 1 || pace > 5 || !(score > 0 && score <= MAX_SCORE)) fail(400, 'bad-score');
   const label = setkey.startsWith('c-') ? [...String(b.label || '')].slice(0, 60).join('') : '';
   const now = Date.now();
+  const mine = await env.DB.prepare('SELECT COUNT(*) AS n, SUM(setkey = ? AND pace = ?) AS here FROM scores WHERE room = ? AND player = ?').bind(setkey, pace, room.code, pl.id).first();
+  if (!mine.here && mine.n >= MAX_BOARDS) fail(409, 'too-many-boards');
   const last = await env.DB.prepare('SELECT MAX(at) AS at FROM scores WHERE room = ? AND player = ?').bind(room.code, pl.id).first();
   if (last.at && now - last.at < SCORE_GAP) fail(429, 'slow-down');
   await env.DB.batch([

@@ -14,6 +14,24 @@ The game works without the server. With no address in `js/config.js`, rooms and 
 - A room's leaderboard is only visible to its members. Its creator can remove players or delete the room.
 - Rooms with no joins or runs for 90 days are deleted automatically (daily cron at 03:17 UTC), along with their players and scores. Visitor counts are kept for 400 days.
 
+## Abuse protection
+
+On the free plan Cloudflare never bills. If a daily limit is used up, the server answers with errors until midnight UTC. The game itself keeps working; rooms and counts pause, and runs played meanwhile wait in the queue.
+
+To keep that from happening:
+
+- **Per-IP rate limits** (`wrangler.toml`, per 60 seconds): 4 new rooms, 90 other writes, 120 visit counts and 240 reads. Cloudflare counts these in memory, and IP addresses are never stored. The limits are generous because a whole school class usually shares one address.
+- **Hard caps** bound the database size whatever happens:
+  - 3,000 rooms in total, and 200 new rooms per day
+  - 60 players per room
+  - 20 leaderboards per player (key set and tempo pairs)
+  - one score post every 4 seconds per player
+  - request bodies of at most 4 KB
+
+  The worst case is a few hundred megabytes, well under the free 5 GB.
+
+An attack spread across many IP addresses could still use up the 100,000 daily writes. That only pauses rooms for the rest of the day, without data loss or cost.
+
 ## Setup
 
 You need a Cloudflare account. The free plan is plenty: it includes 100,000 Worker requests and 100,000 database writes per day.
@@ -29,6 +47,8 @@ npx wrangler@4.157.0 d1 execute type-defender --remote --file schema.sql
 openssl rand -base64 24 | npx wrangler@4.157.0 secret put STATS_KEY   # keep a copy, the stats page asks for it
 npx wrangler@4.157.0 deploy                                   # prints https://type-defender.<you>.workers.dev
 ```
+
+The first deploy on a new account asks for a `workers.dev` subdomain; register one in the Cloudflare dashboard (Workers & Pages) and deploy again. A brand-new subdomain can take a few minutes until HTTPS works.
 
 Then put the printed address into `js/config.js` (`window.TD_API = 'https://…'`) and push.
 
