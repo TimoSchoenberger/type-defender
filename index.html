@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Type Defender</title>
+<meta name="description" content="Kostenloses 10-Finger-Tippspiel für Kinder: Tippe die Buchstaben, Silben und Wörter auf den Bomben, bevor sie die Stadt treffen.">
+<meta name="theme-color" content="#07080c">
+<meta name="color-scheme" content="dark">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Type Defender">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/menu.css">
+</head>
+<body>
+<div id="app" tabindex="-1">
+  <header class="bar">
+    <p class="brand"><img src="icons/icon.svg" alt=""><span>Type Defender</span></p>
+    <div class="tools">
+      <button type="button" id="to-style">Stil</button>
+      <button type="button" id="to-menu" hidden>Tasten wählen (Esc)</button>
+      <button type="button" id="sound">Ton: an</button>
+      <button type="button" id="music">Musik: an</button>
+      <button type="button" id="full" hidden>Vollbild</button>
+    </div>
+  </header>
+  <main class="stage">
+    <canvas id="arena-canvas" aria-label="Spielfeld"></canvas>
+    <p id="capswarn" class="capswarn" hidden>⇪ Feststelltaste ist an</p>
+    <section id="pick" class="pick" tabindex="-1" aria-labelledby="pick-title" hidden>
+      <div class="pick-in">
+        <h1 id="pick-title">Wähle deinen Stil</h1>
+        <p class="pick-lede">Jeder Stil hat eigene Bilder, Geräusche und Musik. Das Spiel ist überall gleich, und du kannst den Stil jederzeit wechseln, sogar mitten im Spiel.</p>
+        <p class="pick-touch">Zum Spielen brauchst du eine echte Tastatur. Auf einem Tablet geht auch eine Bluetooth-Tastatur.</p>
+        <div class="pick-grid" id="pick-grid">
+          <button type="button" class="tile" data-style="neon"><canvas aria-hidden="true"></canvas><span class="tile-meta"><kbd>1</kbd><span class="tile-name">Neon</span><span class="tile-desc">Leuchtende Formen im Takt der Musik.</span></span></button>
+          <button type="button" class="tile" data-style="pixel"><canvas aria-hidden="true"></canvas><span class="tile-meta"><kbd>2</kbd><span class="tile-name">Pixel</span><span class="tile-desc">Kantige 8-Bit-Welt unter Sternen.</span></span></button>
+          <button type="button" class="tile" data-style="doodle"><canvas aria-hidden="true"></canvas><span class="tile-meta"><kbd>3</kbd><span class="tile-name">Doodle</span><span class="tile-desc">Wachsmalbilder auf Heftpapier.</span></span></button>
+          <button type="button" class="tile" data-style="paper"><canvas aria-hidden="true"></canvas><span class="tile-meta"><kbd>4</kbd><span class="tile-name">Papier</span><span class="tile-desc">Bastelpapier, Fallschirme und Konfetti.</span></span></button>
+          <button type="button" class="tile" data-style="comic"><canvas aria-hidden="true"></canvas><span class="tile-meta"><kbd>5</kbd><span class="tile-name">Comic</span><span class="tile-desc">Dicke Linien, ZACK! und PENG!</span></span></button>
+          <button type="button" class="tile" data-style="sea"><canvas aria-hidden="true"></canvas><span class="tile-meta"><kbd>6</kbd><span class="tile-name">Tiefsee</span><span class="tile-desc">Seeminen über einer Stadt am Meeresgrund.</span></span></button>
+        </div>
+        <p class="pick-foot">Type Defender ist kostenlos, ohne Werbung und ohne Anmeldung. Alles bleibt auf diesem Gerät. <a href="https://github.com/TimoSchoenberger/type-defender" target="_blank" rel="noopener">Quellcode und Lizenz auf GitHub</a></p>
+      </div>
+    </section>
+    <div id="menu" class="mn" data-look="comic" tabindex="-1" hidden>
+      <section id="m-home" class="mn-screen" aria-labelledby="m-home-title">
+        <header class="mn-head">
+          <h2 class="mn-title" id="m-home-title">Was üben wir heute?</h2>
+          <p class="mn-bubble">Such dir dein Tempo und deine Tasten aus! Klick auf eine Karte oder drück <b>Enter</b>.</p>
+        </header>
+        <div class="mn-pace">
+          <div class="mn-pace-who">
+            <label class="mn-pace-label" for="m-pace">Tempo</label>
+            <span class="mn-pace-name" id="m-pace-name"></span>
+            <p class="mn-pace-desc" id="m-pace-desc"></p>
+          </div>
+          <div class="mn-pace-ctl">
+            <input type="range" id="m-pace" min="1" max="5" step="1" value="3">
+            <div class="mn-ticks" id="m-ticks"></div>
+          </div>
+          <svg class="mn-graph" id="m-graph" viewBox="0 0 200 84" role="img" aria-label="Alle Tempos starten gleich und enden gleich schnell. Langsamere brauchen mehr Treffer bis dahin."></svg>
+        </div>
+        <h3 class="mn-sec">Vorlagen</h3>
+        <div class="mn-cards" id="m-presets"></div>
+        <h3 class="mn-sec own">Eigene Auswahl</h3>
+        <div class="mn-cards" id="m-custom"></div>
+        <p class="mn-small">Eigene Auswahlen und Rekorde bleiben in diesem Browser gespeichert. Rekorde zählen je Tempo.</p>
+      </section>
+      <section id="m-edit" class="mn-screen" hidden aria-labelledby="m-edit-title">
+        <header class="mn-head">
+          <h2 class="mn-title" id="m-edit-title">Neue Auswahl</h2>
+          <p class="mn-bubble">Tippe eine Taste, dann ist sie <b class="g">an</b>. Nochmal tippen: aus. Halte <b>⇧&nbsp;Umschalt</b> für Großbuchstaben und Zeichen wie ! § $ % &amp;.</p>
+        </header>
+        <div class="mn-toolbar">
+          <div class="mn-seg" role="group" aria-label="Ebene der Tastatur">
+            <button type="button" data-layer="0" aria-pressed="true">a klein</button>
+            <button type="button" data-layer="1" id="m-layer-up" aria-pressed="false">A ⇧ groß</button>
+          </div>
+          <p class="mn-caps" id="m-caps" hidden>⇪ Feststelltaste ist an!</p>
+          <div class="mn-seg" role="group" aria-label="Tastatur">
+            <button type="button" data-layout="de">QWERTZ</button>
+            <button type="button" data-layout="us">QWERTY</button>
+          </div>
+        </div>
+        <div class="mn-kbw"><div class="mn-kb" id="m-kb"></div></div>
+        <div class="mn-panel">
+          <div class="mn-panel-head">
+            <span class="mn-count" id="m-count">0 Tasten an</span>
+            <div class="mn-types" role="group" aria-label="Was fällt herunter?">
+              <span>Es fallen:</span>
+              <label><input type="checkbox" data-type="letters" checked> Buchstaben</label>
+              <label><input type="checkbox" data-type="syl" checked> Silben</label>
+              <label><input type="checkbox" data-type="words" checked> Wörter</label>
+            </div>
+          </div>
+          <div class="mn-chips" id="m-chips"></div>
+          <p class="mn-words" id="m-words"></p>
+        </div>
+        <footer class="mn-foot">
+          <button type="button" class="mn-btn" id="m-cancel">Zurück</button>
+          <span class="mn-spacer"></span>
+          <button type="button" class="mn-btn" id="m-clear">Alles aus</button>
+          <button type="button" class="mn-btn" id="m-upper">Großbuchstaben dazu</button>
+          <button type="button" class="mn-btn mn-go" id="m-done">Fertig!</button>
+        </footer>
+      </section>
+      <div class="mn-modal" id="m-name" hidden>
+        <form class="mn-dialog" id="m-name-form">
+          <h3 id="m-name-title">Wie soll deine Auswahl heißen?</h3>
+          <input id="m-name-input" maxlength="24" autocomplete="off" spellcheck="false" aria-labelledby="m-name-title" placeholder="z. B. Meine Tasten">
+          <div class="mn-row"><button type="button" class="mn-btn" id="m-name-cancel">Abbrechen</button><button type="submit" class="mn-btn mn-go">Speichern</button></div>
+        </form>
+      </div>
+      <div class="mn-modal" id="m-discard" hidden>
+        <div class="mn-dialog" role="alertdialog" aria-labelledby="m-discard-q">
+          <h3 id="m-discard-q">Ohne Speichern zurück?</h3>
+          <p>Deine Änderungen gehen dann verloren.</p>
+          <div class="mn-row"><button type="button" class="mn-btn" id="m-discard-no">Weiter bearbeiten</button><button type="button" class="mn-btn mn-danger" id="m-discard-yes">Verwerfen</button></div>
+        </div>
+      </div>
+    </div>
+  </main>
+  <p class="help" id="help"></p>
+</div>
+
+<script src="js/engine.js"></script>
+<script src="js/music.js"></script>
+<script src="js/s-neon-pixel.js"></script>
+<script src="js/s-doodle-paper.js"></script>
+<script src="js/s-comic-sea.js"></script>
+<script src="js/keys.js"></script>
+<script src="js/db.js"></script>
+<script src="js/menu.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

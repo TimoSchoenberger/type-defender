@@ -1,0 +1,5 @@
+# Local Claude Code setup, not part of the game
+.claude-account/
+claude-project
+.claude/
+.DS_Store
