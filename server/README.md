@@ -1,8 +1,9 @@
 # Type Defender server
 
-A single Cloudflare Worker with a D1 (SQLite) database. It does two things:
+A single Cloudflare Worker with a D1 (SQLite) database and one Durable Object class. It does three things:
 
 - **Rooms:** class or family leaderboards. Someone creates a room and shares its code (such as `TIGER-482`); everyone who joins gets a generated nickname like "Blauer Fuchs" and their runs go onto the room's leaderboard.
+- **Races (last one standing):** members of a room race live with the same bombs. Each room has one `Match` Durable Object that keeps the lobby and the race in memory and talks to the players over WebSockets.
 - **Visitor counts:** the game reports one visit per device and day, one extra count when it runs as an installed app, and one per finished run. The server keeps only those daily totals.
 
 The game works without the server. With no address in `js/config.js`, rooms and counts are simply turned off.
@@ -14,6 +15,14 @@ The game works without the server. With no address in `js/config.js`, rooms and 
 - A room's leaderboard is only visible to its members. Its creator can remove players or delete the room.
 - The creator can also prescribe the key sets everyone in the room practises: up to 12 presets or their own sets. Members then see only those cards, and the server accepts room scores only for them.
 - Rooms nobody opens or plays in for 90 days are deleted automatically (daily cron at 03:17 UTC), along with their players and scores. Every join, run or visit by a member pushes that date back, and the creator sees it in the room panel. Visitor counts are kept for 400 days.
+
+## Races
+
+- Everyone who opens *Wettrennen* in the room joins the lobby. The room's creator picks the key set (and the tempo from the start menu), decides whether to play along, and starts.
+- The `Match` sends the start time and a random seed. Every device builds the same content and the same bombs from the seed and counts down to the same moment; difficulty follows the shared clock instead of each player's hits, so everyone faces the same game.
+- A device reports only "I'm out" (with its score). The `Match` notes the time and place and sends the standings to everyone. The last one left wins; racers out at the same moment share a place.
+- A racer whose connection is gone or silent (no ping) for 12 seconds is out. Short Wi-Fi drops are forgiven, and the page reconnects on its own.
+- Pings are answered by Cloudflare without waking the object (WebSocket hibernation), so an open lobby costs next to nothing. A race uses a few messages per player and no D1 writes; only the current race is kept, in the object's own storage.
 
 ## Abuse protection
 
@@ -98,5 +107,6 @@ All routes are under `/api`. Player requests send `Authorization: Bearer <player
 | `DELETE /rooms/:code/players/:id` | Remove a player (admin). |
 | `POST /rooms/:code/scores` | `{ set, label, pace, score }`. Keeps the best per player, set and tempo; refuses sets the room doesn't prescribe. Returns `{ best, rank, of }` (player). |
 | `GET /rooms/:code/scores?pace=3` | All leaderboards of one tempo, plus the player list (player). |
+| `GET /rooms/:code/race` | WebSocket to the room's race. First message `{ t: "hello", auth: "<player>.<token>", admin? }`; then `start` (admin: `{ set, pace, play }`), `stop` (admin) and `out` (`{ score }`). The server answers with `{ t: "state", now, you, admin, m }` after every change. |
 | `POST /hit` | `{ kind: "visit" \| "app" \| "game" }`. Adds one to today's count. |
 | `GET /stats?days=90` | Daily counts and totals (`Authorization: Bearer <STATS_KEY>`). |

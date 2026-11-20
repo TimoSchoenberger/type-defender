@@ -1,7 +1,7 @@
 /* App wiring: one full-screen stage that shows the style picker, the start menu or the game. */
 (() => {
 'use strict';
-const { Game, Sfx, Music, Menu, Keys, Room, store } = TD;
+const { Game, Sfx, Music, Menu, Keys, Room, Race, store } = TD;
 const byId = Object.fromEntries(TD.styles.map(s => [s.id, s]));
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = id => document.getElementById(id);
@@ -10,7 +10,8 @@ const appEl = $('app'), arenaCanvas = $('arena-canvas'), pickEl = $('pick');
 const styleBtn = $('to-style'), soundBtn = $('sound'), musicBtn = $('music'), menuBtn = $('to-menu'), fullBtn = $('full');
 const helpEl = $('help'), capsEl = $('capswarn');
 // mode is what the stage shows; back is where the picker returns to (null before the first pick).
-let mode = 'pick', back = null, caps = false;
+// racing names the race this device is playing (seed and start), null otherwise.
+let mode = 'pick', back = null, caps = false, racing = null;
 
 const saved = byId[store.get('td-style', '')];
 const arena = new Game(arenaCanvas, saved || byId.comic, 'play');
@@ -69,13 +70,18 @@ const HELP = {
   edit: 'Tippe Tasten zum An- und Ausschalten · ⇧ halten: Großbuchstaben und Zeichen · Enter: fertig · Esc: zurück',
   game: 'Tippe die Zeichen auf den Bomben · Rücktaste: Ziel lösen · Esc: Pause',
   pause: 'Enter oder Klick: weiterspielen · Esc: zur Tastenauswahl',
-  over: 'Enter: nochmal · Esc: Tastenauswahl'
+  over: 'Enter: nochmal · Esc: Tastenauswahl',
+  race: 'Wettrennen: Tippe die Zeichen auf den Bomben · Hier gibt es keine Pause',
+  raceOut: 'Esc: zurück ins Menü',
+  raceDone: 'Enter: zur Lobby · Esc: zurück ins Menü'
 };
 function paint() {
   arenaCanvas.style.visibility = mode === 'game' ? '' : 'hidden';
   menuBtn.hidden = mode !== 'game';
-  styleBtn.hidden = mode === 'pick';
+  styleBtn.hidden = mode === 'pick' || (mode === 'game' && !!racing);
+  const raceDone = Race.state && Race.state.phase !== 'run';
   helpEl.textContent = mode === 'pick' ? HELP.pick + (back ? ' · Esc: zurück' : '') : mode === 'menu' ? HELP[Menu.screen] || HELP.home
+    : racing ? (arena.over ? (raceDone ? HELP.raceDone : HELP.raceOut) : HELP.race)
     : arena.over ? HELP.over : arena.paused ? HELP.pause : HELP.game;
   capsEl.hidden = !(caps && mode === 'game' && arena.content.cased);
 }
@@ -116,12 +122,13 @@ function pickKey(e) {
 function cols() { const top = tiles[0].offsetTop; return tiles.filter(t => t.offsetTop === top).length; }
 
 // ---------- menu and game ----------
-function showMenu(screen = 'home') { pickEl.hidden = true; mode = 'menu'; Menu.show(screen); paint(); }
+function showMenu(screen = 'home') { leaveRace(); pickEl.hidden = true; mode = 'menu'; Menu.show(screen); paint(); }
 // A key set from the menu becomes the game's content; records are kept per set and tempo.
 function startGame(sel) {
   Menu.hide(); mode = 'game';
   const pace = Menu.paceInfo();
   arena.pace = pace.rate; arena.paceName = pace.name;
+  arena.race = null; arena.raceView = null;
   arena.content = Keys.build(sel); arena.best = Menu.bestOf(sel.id); arena.reset();
   arena.onOver = g => {
     Menu.setBest(sel.id, g.best);
@@ -140,6 +147,43 @@ function sendToRoom(sel, pace, g) {
     if (still()) g.roomLine = r ? `Raum ${room.code}: Platz ${r.rank} von ${r.of}` : `Raum ${room.code}: wird gesendet, sobald du online bist`;
   }).catch(() => {});
 }
+// ---------- race: last one standing ----------
+const raceId = m => m.seed + ':' + m.start;
+// The race began and this device is in it: everyone builds the same content from the seed and counts down to the shared start.
+function startRace(m) {
+  const s = m.set, sel = s.chars ? { id: s.set, name: s.name, chars: s.chars, types: s.types } : Keys.PRESETS.find(p => p.id === s.set);
+  if (!sel) return;
+  racing = raceId(m);
+  pickEl.hidden = true; Menu.hide(); mode = 'game';
+  arena.pace = TD.PACE[m.pace - 1]; arena.paceName = '';
+  arena.content = Keys.build(sel, TD.util.rng(m.seed));
+  arena.race = { seed: m.seed, clock: () => (Race.now() - m.start) / 1000 };
+  arena.best = 0; arena.reset();
+  arena.countT = Math.max(0.001, -arena.race.clock());
+  arena.raceView = Race.view();
+  arena.onOver = g => { Room.game(); if (!g.won) Race.out(g.score); };
+  arena.resize(); paint();
+  appEl.focus();
+}
+// Leaving mid-race counts as being out.
+function leaveRace() {
+  if (!racing) return;
+  if (!arena.over && Race.mine && Race.mine.status === 'in') Race.out(arena.score);
+  racing = null; arena.race = null; arena.raceView = null; arena.over = true;
+}
+function toLobby() { racing = null; arena.race = null; mode = 'menu'; Menu.show('home', true); Menu.openRace(); paint(); }
+Race.on(r => {
+  const m = r.state, mine = r.mine;
+  if (!m) return;
+  if (m.phase === 'run' && mine && mine.status === 'in' && racing !== raceId(m) && Room.current) { startRace(m); return; }
+  if (!racing) return;
+  if (raceId(m) !== racing) { if (mode === 'game') toLobby(); return; } // called off by the host
+  arena.raceView = r.view();
+  if (arena.over && !arena.won && mine && mine.status === 'in') Race.out(arena.score); // the first report got lost in a reconnect
+  if (m.phase === 'done' && !arena.over) arena.finish(!!mine && mine.status === 'won');
+  paint();
+});
+
 Menu.init({ onStart: startGame, onScreen: () => paint() });
 
 styleBtn.addEventListener('click', showPick);
@@ -170,9 +214,11 @@ window.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     e.preventDefault();
     if (e.repeat) return;
+    if (racing && !arena.over) return; // no pause in a race
     if (arena.over || arena.paused) showMenu(); else { arena.pause(); paint(); }
     return;
   }
+  if (racing && arena.over && e.key === 'Enter' && Race.state && Race.state.phase !== 'run') { e.preventDefault(); toLobby(); return; }
   // AltGr (Ctrl+Alt on Windows) types @, € and friends, so only plain Ctrl and Cmd shortcuts are skipped.
   const altgr = e.getModifierState && e.getModifierState('AltGraph');
   if (e.metaKey || (e.ctrlKey && !altgr) || e.repeat || e.key === 'Tab') return;

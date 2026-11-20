@@ -1,6 +1,9 @@
-/* Type Defender API: class or family rooms with shared leaderboards, plus anonymous visitor counts.
+/* Type Defender API: class or family rooms with shared leaderboards, live races ("last one standing"),
+   plus anonymous visitor counts.
    Kids never type names: each player gets a generated nickname, and custom key sets are shown by their keys.
    Secrets (player and admin tokens) are only stored as SHA-256 hashes. */
+
+import { DurableObject } from 'cloudflare:workers';
 
 const DAY = 86400000;
 const IDLE_DAYS = 90;          // rooms nobody opens or plays in for this long are deleted
@@ -37,6 +40,7 @@ export default {
     }
     try {
       const res = await route(req, env, new URL(req.url));
+      if (res.status === 101) return res; // a race connection: the WebSocket answer must pass through untouched
       for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
       return res;
     } catch (err) {
@@ -96,6 +100,7 @@ async function route(req, env, url) {
   if (tail === 'sets' && m === 'PUT') { await isAdmin(req, room); return putSets(req, env, room); }
   if (tail === '' && m === 'DELETE') { await isAdmin(req, room); await dropRoom(env, code); return json({ ok: true }); }
   if (tail === 'join' && m === 'POST') return join(env, room);
+  if (tail === 'race' && m === 'GET') return race(req, env, room);
   if (tail === 'rename' && m === 'POST') return rename(env, room, await player(req, env, room));
   if (tail === 'leave' && m === 'POST') { const pl = await player(req, env, room); await dropPlayer(env, code, pl.id); return json({ ok: true }); }
   if (tail === 'scores' && m === 'POST') return postScore(req, env, room, await player(req, env, room));
@@ -138,20 +143,22 @@ async function touch(env, room) {
 // ({ set: 'c-…', name, chars, types }); the server derives each custom key itself, exactly like js/room.js does.
 const roomSets = room => (room.sets ? JSON.parse(room.sets) : null);
 const customKey = async (chars, types) => 'c-' + (await hash([...chars].sort().join('') + '|' + ['letters', 'syl', 'words'].map(k => +(types[k] !== false)).join(''))).slice(0, 16);
+// One key set from a client: a preset id, or a custom set's name, keys and what falls. null when it makes no sense.
+async function cleanSet(e) {
+  if (e && /^p-[a-z0-9]{1,16}$/.test(e.set)) return { set: e.set };
+  const chars = Array.isArray(e && e.chars) ? [...new Set(e.chars.map(String).filter(c => [...c].length === 1))] : [];
+  const name = [...String((e && e.name) || '').trim()].slice(0, 24).join('');
+  if (!chars.length || chars.length > 100 || !name) return null;
+  const types = { letters: e.types?.letters !== false, syl: e.types?.syl !== false, words: e.types?.words !== false };
+  return { set: await customKey(chars, types), name, chars, types };
+}
 async function putSets(req, env, room) {
   const b = await body(req);
   let sets = null;
   if (b.sets != null) {
     if (!Array.isArray(b.sets) || !b.sets.length || b.sets.length > MAX_ROOM_SETS) fail(400, 'bad-sets');
     sets = [];
-    for (const e of b.sets) {
-      if (e && /^p-[a-z0-9]{1,16}$/.test(e.set)) { sets.push({ set: e.set }); continue; }
-      const chars = Array.isArray(e && e.chars) ? [...new Set(e.chars.map(String).filter(c => [...c].length === 1))] : [];
-      const name = [...String((e && e.name) || '').trim()].slice(0, 24).join('');
-      if (!chars.length || chars.length > 100 || !name) fail(400, 'bad-sets');
-      const types = { letters: e.types?.letters !== false, syl: e.types?.syl !== false, words: e.types?.words !== false };
-      sets.push({ set: await customKey(chars, types), name, chars, types });
-    }
+    for (const e of b.sets) { const set = await cleanSet(e); if (!set) fail(400, 'bad-sets'); sets.push(set); }
     sets = sets.filter((e, i) => sets.findIndex(x => x.set === e.set) === i);
   }
   await env.DB.prepare('UPDATE rooms SET sets = ?, active = ? WHERE code = ?').bind(sets && JSON.stringify(sets), Date.now(), room.code).run();
@@ -258,3 +265,139 @@ async function stats(req, env, url) {
   const totals = await env.DB.prepare('SELECT (SELECT COUNT(*) FROM rooms) AS rooms, (SELECT COUNT(*) FROM players) AS players').first();
   return json({ days: rows, ...totals });
 }
+
+// ---------- races: last one standing ----------
+// Each room has one Match (a Durable Object) that holds the race in memory and talks to everyone over WebSockets.
+// Every device plays the race itself, with the same bombs from a shared seed; the Match only learns who is out and when,
+// so a race costs a handful of messages per player and no database writes.
+const RACE_LEAD = 4000;        // ms between "start" and the first bomb, for the 3-2-1 countdown
+const RACE_MAX = 3600000;      // a race ends after an hour whatever happens
+const RACE_GRACE = 12000;      // ms without a connection or a ping before a racer counts as out
+const RACE_TICK = 4000;        // how often the Match checks for vanished racers
+
+async function race(req, env, room) {
+  if (req.headers.get('Upgrade') !== 'websocket') fail(426, 'websocket');
+  // Browsers cannot send headers on a WebSocket, so the player signs in with the first message instead.
+  // The Origin check keeps other sites from opening race connections in a visitor's name.
+  if (!env.ORIGINS.split(',').map(s => s.trim()).includes(req.headers.get('Origin') || '')) fail(403, 'origin');
+  const fwd = new Request(req);
+  fwd.headers.set('X-Room', room.code);
+  return env.MATCH.get(env.MATCH.idFromName(room.code)).fetch(fwd);
+}
+
+const lobbyState = () => ({ phase: 'lobby', start: 0, seed: 0, set: null, pace: 3, players: [], winner: null });
+
+export class Match extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    // Pings are answered without waking the object; their timestamps tell who is still there.
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    ctx.blockConcurrencyWhile(async () => { this.m = (await ctx.storage.get('m')) || lobbyState(); });
+  }
+  async fetch(req) {
+    if (this.ctx.getWebSockets().length >= MAX_PLAYERS * 2) return json({ error: 'full' }, 409);
+    const pair = new WebSocketPair(), [client, server] = [pair[0], pair[1]];
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ code: req.headers.get('X-Room'), at: Date.now() });
+    return new Response(null, { status: 101, webSocket: client });
+  }
+  async webSocketMessage(ws, msg) {
+    if (typeof msg !== 'string' || msg.length > 4096) return;
+    let d;
+    try { d = JSON.parse(msg); } catch { return; }
+    const a = ws.deserializeAttachment() || {};
+    if (d.t === 'hello' && !a.id) return this.hello(ws, a, d);
+    if (!a.id) return;
+    if (d.t === 'start' && a.admin) return this.start(d);
+    if (d.t === 'stop' && a.admin) { this.m = lobbyState(); return this.save(); }
+    if (d.t === 'out') return this.out(a.id, d.score);
+  }
+  async webSocketClose(ws) { await this.left(ws); }
+  async webSocketError(ws) { await this.left(ws); }
+
+  async hello(ws, a, d) {
+    const [id, secret] = String(d.auth || '').split('.');
+    const pl = await this.env.DB.prepare('SELECT id, nick, token FROM players WHERE id = ? AND room = ?').bind(String(id), a.code).first();
+    if (!pl || pl.token !== (await hash(secret || ''))) { send(ws, { t: 'error', e: 'no-player' }); ws.close(4001, 'no-player'); return; }
+    let admin = false;
+    if (d.admin) {
+      const room = await this.env.DB.prepare('SELECT admin FROM rooms WHERE code = ?').bind(a.code).first();
+      admin = !!room && room.admin === (await hash(String(d.admin)));
+    }
+    // One connection per player: a second tab or a reconnect replaces the old one.
+    for (const o of this.ctx.getWebSockets()) if (o !== ws && (o.deserializeAttachment() || {}).id === pl.id) { o.serializeAttachment({}); o.close(4000, 'replaced'); }
+    ws.serializeAttachment({ code: a.code, id: pl.id, nick: pl.nick, admin, at: Date.now() });
+    const p = this.m.players.find(x => x.id === pl.id);
+    if (p) p.gone = 0;
+    await this.save();
+  }
+  async start(d) {
+    if (this.m.phase === 'run') return;
+    const set = await cleanSet(d.set);
+    if (!set) return;
+    const players = this.members().filter(p => d.play || !p.admin).map(p => ({ id: p.id, nick: p.nick, status: 'in', place: 0, time: 0, score: 0, gone: 0 }));
+    if (!players.length) return;
+    const now = Date.now();
+    this.m = { phase: 'run', start: now + RACE_LEAD, seed: crypto.getRandomValues(new Uint32Array(1))[0] | 0, set, pace: Math.min(5, Math.max(1, d.pace | 0 || 3)), players, winner: null };
+    await this.ctx.storage.setAlarm(now + RACE_TICK);
+    await this.save();
+  }
+  async out(id, score, now = Date.now()) {
+    const p = this.m.players.find(x => x.id === id);
+    if (this.m.phase !== 'run' || !p || p.status !== 'in') return;
+    this.drop(p, now, score);
+    this.finish(now);
+    await this.save();
+  }
+  // Racers out at the same moment share a place: the place is how many were still in.
+  drop(p, now, score) {
+    p.place = this.m.players.filter(x => x.status === 'in').length;
+    p.status = 'out'; p.time = Math.max(0, now - this.m.start);
+    p.score = Math.min(MAX_SCORE, Math.max(0, Number(score) | 0));
+  }
+  finish(now) {
+    const m = this.m, still = m.players.filter(x => x.status === 'in');
+    if (still.length > (m.players.length > 1 ? 1 : 0) && now - m.start < RACE_MAX) return;
+    for (const p of still) { p.status = 'won'; p.place = 1; p.time = Math.max(0, now - m.start); }
+    m.winner = still.length === 1 ? still[0].id : null;
+    m.phase = 'done';
+  }
+  async left(ws) {
+    const a = ws.deserializeAttachment() || {};
+    ws.serializeAttachment({});
+    const p = a.id && this.m.players.find(x => x.id === a.id);
+    if (p && p.status === 'in' && !this.socketOf(a.id)) p.gone = Date.now();
+    await this.save();
+  }
+  // Drops racers whose connection is gone or silent; a short gap (a wobbly Wi-Fi) is forgiven.
+  async alarm() {
+    const m = this.m, now = Date.now();
+    if (m.phase !== 'run') return;
+    for (const p of m.players.filter(x => x.status === 'in')) {
+      const ws = this.socketOf(p.id);
+      if (ws) {
+        const a = ws.deserializeAttachment(), ping = this.ctx.getWebSocketAutoResponseTimestamp(ws);
+        if (now - Math.max(a.at, ping ? ping.getTime() : 0) < RACE_GRACE) { p.gone = 0; continue; }
+      } else if (p.gone && now - p.gone < RACE_GRACE) continue;
+      else if (!p.gone) { p.gone = now; continue; }
+      this.drop(p, now, p.score);
+    }
+    this.finish(now);
+    if (m.phase === 'run') await this.ctx.storage.setAlarm(now + RACE_TICK);
+    await this.save();
+  }
+
+  socketOf(id) { return this.ctx.getWebSockets().find(ws => (ws.deserializeAttachment() || {}).id === id); }
+  members() {
+    const seen = new Map();
+    for (const ws of this.ctx.getWebSockets()) { const a = ws.deserializeAttachment() || {}; if (a.id) seen.set(a.id, { id: a.id, nick: a.nick, admin: a.admin }); }
+    return [...seen.values()];
+  }
+  async save() {
+    await this.ctx.storage.put('m', this.m);
+    const m = this.m, lobby = this.members(), now = Date.now();
+    const state = { ...m, players: m.players.map(({ gone, ...p }) => p), lobby };
+    for (const ws of this.ctx.getWebSockets()) { const a = ws.deserializeAttachment() || {}; if (a.id) send(ws, { t: 'state', now, you: a.id, admin: a.admin, m: state }); }
+  }
+}
+function send(ws, msg) { try { ws.send(JSON.stringify(msg)); } catch { /* already closed */ } }

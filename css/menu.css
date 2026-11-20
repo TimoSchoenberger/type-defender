@@ -327,6 +327,16 @@
 .mn-opt-name { font-weight: 700; }
 .mn-opt-keys { margin-left: auto; font-size: .88rem; opacity: .8; text-align: right; }
 .mn-dialog .mn-row .mn-spacer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-right: auto; }
+/* Race lobby */
+.mn-dialog.mn-race { grid-template-rows: auto auto minmax(0, 1fr) auto auto auto; }
+.mn-race-info { margin: 0; color: var(--mute); }
+.mn-race-host { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; }
+.mn-race-host:empty, .mn-race-info:empty { display: none; }
+.mn-race-field { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.mn-race-field small { font-weight: 400; color: var(--mute); }
+.mn-race-field select { padding: 6px 10px; font: inherit; color: var(--ink); background: var(--soft); border: 2px solid var(--line); border-radius: var(--r-sm); }
+.mn-race-field input { width: 20px; height: 20px; margin: 0; accent-color: var(--hi); }
+.mn-race-field select:focus-visible, .mn-race-field:has(input:focus-visible) { outline: 4px solid var(--focus); outline-offset: 2px; }
 
 @media (max-width: 760px) {
   .mn-pace { grid-template-columns: 1fr; }

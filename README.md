@@ -16,6 +16,8 @@ No account, no ads, no tracking. Works in any modern browser, can be installed a
 - The run ends when the first bomb hits the city. Esc pauses; Enter continues after a 3-2-1 countdown.
 - The game never stops getting harder: every few hits a new stage (*Stufe*) begins, with faster and more bombs and longer words. Every tempo starts at the same speed and climbs the same ramp. Slower tempos take more hits per stage, so younger kids and fast adults can play the same game.
 - **Class and family rooms:** create a room, share its code (such as `TIGER-482`) and compare records on a shared leaderboard. Everyone gets a generated nickname, so nobody has to type a name. A teacher can prescribe which key sets everyone in the room practises.
+- **Races (last one standing):** in a room, everyone opens *Wettrennen*, the room's creator picks the keys and starts. All devices get the same bombs and the same rising difficulty; a list shows who is still in and who is out after how long. The last one left wins.
+- A single capital letter gets a small ⇧ arrow, so C and c, O and o or I and l can be told apart.
 
 There are six styles (Neon, Pixel, Doodle, Paper, Comic, Deep Sea), each with its own art, sounds and live-synthesised music. You can switch styles at any time, even mid-game.
 
@@ -32,7 +34,7 @@ The installed app starts full screen and works without an internet connection.
 
 - Custom key sets and personal records are stored in the browser (IndexedDB). There are no cookies, no ads and no third-party trackers, and fonts are bundled with the app.
 - The game counts visits anonymously: one count per device and day, plus one per finished run. Only the daily totals are stored, with nothing about who played.
-- Class and family rooms store generated nicknames and scores, and only for players who join a room. Rooms nobody opens or plays in for 90 days are deleted. [server/README.md](server/README.md) has the details.
+- Class and family rooms store generated nicknames and scores, and only for players who join a room. Races keep only the current race (who is in, who is out and when) and store no results. Rooms nobody opens or plays in for 90 days are deleted. [server/README.md](server/README.md) has the details.
 - The site is hosted on GitHub Pages and the server runs on Cloudflare Workers. Both receive the usual request data, such as IP addresses, when the game loads or talks to the server. See the [GitHub](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) and [Cloudflare](https://www.cloudflare.com/privacypolicy/) privacy policies.
 
 ## Development
@@ -58,6 +60,7 @@ Any static file server works. Pushing to `main` publishes the site through GitHu
 | `js/db.js` | Browser storage for custom key sets and records (IndexedDB, with a localStorage fallback). |
 | `js/menu.js` | Start menu (tempo slider, room panel and leaderboard, key sets, records per set and tempo) and the on-screen keyboard editor. |
 | `js/room.js` | Client for class and family rooms and the anonymous visit count. Scores played offline are queued and sent later. |
+| `js/race.js` | Client for races: the WebSocket to the room's race, the shared clock and the standings. |
 | `js/config.js` | The server address. Leave it empty to turn rooms and counting off. |
 | `js/app.js` | Wiring: style picker, menu, game, keyboard routing, music and the service worker. |
 | `sw.js` | Offline support. Network first, cache as the fallback, so updates arrive on the next load. |

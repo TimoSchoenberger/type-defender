@@ -116,7 +116,7 @@ function wordsFor(set) {
   }
   return [...out];
 }
-function syllablesFor(set) {
+function syllablesFor(set, R = Math.random) {
   const chars = [...set], low = chars.filter(isLower), out = new Set();
   const V = low.filter(c => VOWELS.includes(c)), K = low.filter(c => !VOWELS.includes(c));
   for (const c of K) for (const v of V) {
@@ -127,16 +127,17 @@ function syllablesFor(set) {
   // Too few for syllables (no vowels, digits or signs): typing-course pairs like "fj" or "12".
   if (out.size < 6 && chars.length > 1) {
     if (chars.length <= 8) { for (const a of chars) for (const b of chars) out.add(a + b); }
-    else for (let i = 0; i < 64; i++) out.add(chars[(Math.random() * chars.length) | 0] + chars[(Math.random() * chars.length) | 0]);
+    else for (let i = 0; i < 64; i++) out.add(chars[(R() * chars.length) | 0] + chars[(R() * chars.length) | 0]);
   }
   return [...out];
 }
 
 // Selection → the content shape the game expects (see POOL in engine.js).
-function build(sel) {
+// A race passes a seeded R, so every device builds exactly the same content.
+function build(sel, R) {
   const set = new Set(sel.chars), t = sel.types || {};
   let letters = t.letters !== false ? [...set] : [];
-  const syl = t.syl !== false ? syllablesFor(set) : [];
+  const syl = t.syl !== false ? syllablesFor(set, R) : [];
   const words = t.words !== false ? wordsFor(set) : [];
   const ok = words.length >= 3 ? words : [];
   if (!letters.length && !syl.length && !ok.length) letters = [...set];

@@ -19,6 +19,7 @@ const PACE = [0.25, 0.4, 0.55, 0.75, 1];
 const RAMP = 50;
 const STAGE = 6;     // heat per stage ("Stufe"), shown in the HUD
 const COUNT = 0.75;  // seconds per step of the 3-2-1 countdown after a pause
+const RACE_SEC = 2.5; // in a race, difficulty follows the clock: one unit of heat per this many seconds (at full pace)
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[(Math.random() * a.length) | 0];
@@ -243,10 +244,78 @@ function pause(c, g, o) {
     T('Enter: weiterspielen', 24, 318, o.color);
     T('Esc: zur Tastenauswahl', 20, 360, o.color);
   } else {
-    const n = Math.ceil(g.countT / COUNT), k = g.countT / COUNT - n + 1; // k runs 1 → 0 within each step
+    const n = Math.min(3, Math.ceil(g.countT / COUNT)), k = Math.min(1, g.countT / COUNT - n + 1); // k runs 1 → 0 within each step
     c.globalAlpha = Math.min(1, k * 3); T(String(n), Math.round(110 + 40 * k), 280, o.accent);
   }
   c.restore();
+}
+
+// Race standings, as the app hands them over in g.raceView: still racing first, then the rest by place.
+const clock = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+function fit(c, text, w) {
+  if (c.measureText(text).width <= w) return text;
+  let t = text;
+  while (t.length > 1 && c.measureText(t + '…').width > w) t = t.slice(0, -1);
+  return t + '…';
+}
+// col: { fg, mute, accent, stroke }; racers who are out are drawn muted.
+function raceRow(c, r, x, y, w, col) {
+  c.fillStyle = r.me ? col.accent : r.status === 'out' ? col.mute : col.fg;
+  c.textAlign = 'right'; const tail = r.status === 'out' ? clock(r.time) : r.status === 'won' ? '🏆' : '';
+  const put = (t, px) => { if (col.stroke) { c.lineWidth = 4; c.strokeStyle = col.stroke; c.strokeText(t, px, y); } c.fillText(t, px, y); };
+  if (tail) put(tail, x + w);
+  const tw = tail ? c.measureText(tail).width + 10 : 0;
+  c.textAlign = 'left'; put(fit(c, (r.place ? r.place + '. ' : '• ') + r.nick, w - tw), x);
+}
+// While racing: a small panel under the score with who is left and the latest ones out.
+function racePanel(c, g, o) {
+  const v = g.raceView;
+  if (!v) return;
+  const f = s => o.font.replace('{s}', s), out = v.rows.filter(r => r.status === 'out').slice(0, 6);
+  const h = 44 + Math.max(1, out.length) * 22, x = 16, y = 112, w = 214;
+  c.save(); c.textBaseline = 'middle';
+  if (o.panel) o.panel(c, x, y, w, h, 'score');
+  c.font = f(14); c.fillStyle = o.accent; c.textAlign = 'left';
+  c.fillText(`NOCH ${v.left} VON ${v.total}`, x + 16, y + 22);
+  c.font = f(13);
+  if (!out.length) { c.fillStyle = o.dim; c.fillText('Alle sind noch dabei', x + 16, y + 48); }
+  out.forEach((r, i) => raceRow(c, r, x + 16, y + 48 + i * 22, w - 32, { fg: o.color, mute: o.dim, accent: o.accent }));
+  c.restore();
+}
+// After you are out (or have won): the whole field, like the results board of a racing game.
+function raceOver(c, g, o) {
+  const v = g.raceView || { rows: [], total: 0, done: false }, a = clamp(g.overT * 2.5, 0, 1), f = s => o.font.replace('{s}', s);
+  const me = v.rows.find(r => r.me);
+  c.save(); c.globalAlpha = a; c.fillStyle = o.dim; c.fillRect(0, 0, W, H);
+  c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
+  const T = (txt, size, y, col) => {
+    c.font = f(size);
+    if (o.stroke) { c.lineWidth = Math.max(4, size / 6); c.strokeStyle = o.stroke; c.strokeText(txt, W / 2, y); }
+    c.fillStyle = col; c.fillText(txt, W / 2, y);
+  };
+  T(g.won ? 'Gewonnen!' : me && me.status === 'out' ? 'Raus!' : 'Ende', 52, 92, o.accent);
+  const line = me && me.place ? `Platz ${me.place} von ${v.total} · ${clock(me.time)} · ${g.score} Punkte` : `${g.score} Punkte`;
+  T(line, 20, 142, o.color);
+  // Two columns of up to 13 rows each; a bigger field shows the top and you.
+  const per = 13, rows = v.rows.length > per * 2 ? [...v.rows.slice(0, per * 2 - 1), ...(me && v.rows.indexOf(me) >= per * 2 - 1 ? [me] : [v.rows[per * 2 - 1]])] : v.rows;
+  const cols = rows.length > per ? 2 : 1, cw = 300, gap = 40, x0 = W / 2 - (cols * cw + (cols - 1) * gap) / 2;
+  c.font = f(16); c.textBaseline = 'middle';
+  rows.forEach((r, i) => { c.globalAlpha = a * (r.status === 'out' && !r.me ? 0.7 : 1); raceRow(c, r, x0 + Math.floor(i / per) * (cw + gap), 190 + (i % per) * 25, cw, { fg: o.color, mute: o.color, accent: o.accent, stroke: o.stroke }); });
+  c.globalAlpha = a;
+  c.textAlign = 'center';
+  if (g.overT > 0.6) { c.globalAlpha = a * (0.6 + 0.4 * Math.sin(g.t * 5)); T(v.done ? 'Enter: zur Lobby · Esc: Menü' : 'Warte, bis alle raus sind … · Esc: Menü', 20, 540, o.color); }
+  c.restore();
+}
+// Single capital letters look like their small form in many fonts (C c, O o, S s, I l), so they get a small ⇧ arrow.
+// y is the middle of the bomb's text (styles that draw it elsewhere say so with labelY).
+function shiftMark(c, b, col, y0) {
+  if (b.text.length !== 1 || b.text === b.text.toLowerCase() || b.doomed) return;
+  const x = b.x + (b.tw || 20) / 2 + 9, y = y0 - 12, s = 6;
+  c.save(); c.fillStyle = col;
+  c.beginPath();
+  c.moveTo(x, y - s); c.lineTo(x + s, y); c.lineTo(x + s / 2.4, y); c.lineTo(x + s / 2.4, y + s * 0.9);
+  c.lineTo(x - s / 2.4, y + s * 0.9); c.lineTo(x - s / 2.4, y); c.lineTo(x - s, y); c.closePath();
+  c.fill(); c.restore();
 }
 
 const LAYERS = new Map();
@@ -267,7 +336,7 @@ class Game {
       target: null, hint: null, score: 0, combo: 0, kills: 0, hits: 0, errors: 0,
       jam: 0, recoil: 0, shake: 0, flash: 0, angle: -Math.PI / 2,
       weapon: 'cannon', weaponT: 0, powerIdx: 0, shield: false, shieldVis: 0, shieldT: 0,
-      letThrough: null, over: false, overT: 0, roomLine: '', paused: false, countT: 0, stageSeen: 1, spawnT: 0.6, aiT: 0.8, nid: 1
+      letThrough: null, over: false, overT: 0, roomLine: '', paused: false, countT: 0, stageSeen: 1, won: false, spawned: 0, spawnT: 0.6, aiT: 0.8, nid: 1
     });
     if (this.mode === 'auto') for (const y of [80, 190, 290, 380]) { const b = this.spawn(); if (b) b.y = y; }
   }
@@ -294,28 +363,31 @@ class Game {
     b.h = s.bombH || 52; b.w = Math.max(b.h, b.tw + (s.padX ?? 30));
   }
   // How far the run has heated up, in "hits at full pace". All difficulty ramps read this.
-  heat() { return this.kills * this.pace; }
+  // In a race (this.race = { seed, clock }) it follows the shared clock instead, so everyone faces the same difficulty.
+  heat() { return (this.race ? Math.max(0, this.race.clock()) / RACE_SEC : this.kills) * this.pace; }
   // Heat beyond the main ramp; it keeps pushing speed and density up for as long as the run lasts.
   extra() { return Math.max(0, this.heat() - RAMP); }
   stage() { return 1 + Math.floor(this.heat() / STAGE); }
   tier() { const h = this.heat(); return this.mode === 'auto' ? 2 : h < 6 ? 0 : h < 14 ? 1 : h < RAMP ? 2 : 3; }
-  pickText() {
-    const C = this.content, has = k => C[k] && C[k].length;
+  pickText(R = Math.random) {
+    const C = this.content, has = k => C[k] && C[k].length, pick = a => a[(R() * a.length) | 0];
     let opts = TIERS[this.tier()].filter(([k]) => has(k));
     if (!opts.length) opts = ['letters', 'syl', 'words'].filter(has).map(k => [k, 1]);
-    let r = Math.random() * opts.reduce((s, o) => s + o[1], 0);
+    let r = R() * opts.reduce((s, o) => s + o[1], 0);
     for (const [k, w] of opts) if ((r -= w) <= 0) return pick(C[k]);
     return pick(C[opts[0][0]]);
   }
   spawnEvery() { return this.mode === 'auto' ? rand(1.5, 2.2) : Math.max(0.95, 2.4 - this.heat() * 0.035) / (1 + this.extra() * 0.012) * rand(0.85, 1.15); }
   maxBombs() { return this.mode === 'auto' ? 7 : Math.min(8, 3 + Math.floor(this.heat() / 7)) + Math.min(3, Math.floor(this.extra() / 20)); }
   spawn() {
+    // In a race the n-th bomb is the same on every device: its text, place and speed come from the shared seed.
+    const R = this.race ? rng(this.race.seed + this.spawned * 7919) : Math.random, rand = (a, b) => a + R() * (b - a);
     const live = this.bombs.filter(b => !b.doomed);
     let text = null;
     // No two bombs share a first letter (repeated single letters are fine),
     // so the first key always names exactly one target. Small key sets can run out: skip this spawn then.
     for (let i = 0; i < 24 && !text; i++) {
-      const t = this.pickText(), solo = t.length === 1;
+      const t = this.pickText(R), solo = t.length === 1;
       if (!live.some(b => b.text[0] === t[0] && !(solo && b.text.length === 1))) text = t;
     }
     if (!text) return null;
@@ -330,7 +402,7 @@ class Game {
     }
     b.x = b.baseX = x; b.y = -b.h / 2 - 8;
     b.vy = this.mode === 'auto' ? rand(30, 40) : (24 + Math.min(36, this.heat() * 0.7) + this.extra() * 0.3) * rand(0.9, 1.1);
-    this.bombs.push(b);
+    this.bombs.push(b); this.spawned++;
     return b;
   }
   tip() { return { x: CANNON.x + Math.cos(this.angle) * BARREL, y: CANNON.y + Math.sin(this.angle) * BARREL }; }
@@ -349,7 +421,7 @@ class Game {
 
   // ---------- input ----------
   key(k) {
-    if (this.over) { if ((k === 'Enter' || k === ' ') && this.overT > 0.6) this.reset(); return; }
+    if (this.over) { if (!this.race && (k === 'Enter' || k === ' ') && this.overT > 0.6) this.reset(); return; }
     if (this.paused) { if (k === 'Enter' || k === ' ') this.resume(); return; }
     if (this.countT > 0) return;
     if (k === 'Backspace') { if (this.target) { this.target.typed = 0; this.target = null; } return; }
@@ -364,9 +436,11 @@ class Game {
     this.target = best; this.hitKey(best);
   }
   // A running game pauses; resume() counts down 3-2-1 before it continues.
-  pause() { if (this.mode === 'play' && !this.over) { this.paused = true; this.countT = 0; if (this.target) { this.target.typed = 0; this.target = null; } } }
+  pause() { if (this.mode === 'play' && !this.over && !this.race) { this.paused = true; this.countT = 0; if (this.target) { this.target.typed = 0; this.target = null; } } }
   resume() { if (this.paused) { this.paused = false; this.countT = 3 * COUNT; this.sfx('tick'); } }
   get frozen() { return this.paused || this.countT > 0; }
+  // The race ended while this player was still in: they won (or the race was called off).
+  finish(won) { if (this.over) return; this.over = true; this.overT = 0; this.target = null; this.won = won; if (won) this.sfx('power'); }
   hitKey(b) {
     b.typed++; this.combo++; this.hits++;
     const final = b.typed >= b.text.length;
@@ -433,11 +507,7 @@ class Game {
     if (b.dead) return;
     b.dead = b.doomed = true;
     if (this.target === b) this.target = null;
-    if (scored) {
-      this.kills++; this.score += 10 * b.text.length;
-      const n = this.stage();
-      if (this.mode === 'play' && n > this.stageSeen) { this.stageSeen = n; this.say(`Stufe ${n}`, W / 2, 200, { size: 34, life: 1.2, vy: -14, kind: 'power' }); this.sfx('stage'); }
-    }
+    if (scored) { this.kills++; this.score += 10 * b.text.length; }
     this.style.explode(this, b); this.sfx('boom');
   }
   impact(b) {
@@ -478,12 +548,13 @@ class Game {
     if (this.paused) return;
     if (this.countT > 0) {
       const step = Math.ceil(this.countT / COUNT);
-      this.countT -= dt;
+      this.countT = this.race ? -this.race.clock() : this.countT - dt; // a race counts down to the shared start
       if (this.countT <= 0) { this.countT = 0; this.sfx('go'); } else if (Math.ceil(this.countT / COUNT) < step) this.sfx('tick');
       return;
     }
     this.t += dt;
-    const s = this.style;
+    const s = this.style, n = this.stage();
+    if (this.mode === 'play' && n > this.stageSeen && !this.over) { this.stageSeen = n; this.say(`Stufe ${n}`, W / 2, 200, { size: 34, life: 1.2, vy: -14, kind: 'power' }); this.sfx('stage'); }
     this.shake = Math.max(0, this.shake - dt * 30);
     this.flash = Math.max(0, this.flash - dt * 2);
     this.recoil = Math.max(0, this.recoil - dt * 6);
@@ -552,14 +623,15 @@ class Game {
     if (this.weapon !== 'cannon') s.drawGauge ? s.drawGauge(w, this) : gauge(w, this, s.gauge);
     for (const p of this.parts) s.drawParticle(w, p, this);
     if (s.endWorld) s.endWorld(this, c);
-    for (const b of this.bombs) s.drawLabel(c, b, this);
+    if (this.race && !this.over) racePanel(c, this, s.hud);
+    for (const b of this.bombs) { s.drawLabel(c, b, this); shiftMark(c, b, s.hud.accent, s.labelY ? s.labelY(b) : b.y - b.kick * 6); }
     const tb = this.target || this.hint;
     if (tb) s.drawReticle(c, tb, this, tb === this.target);
     for (const x of this.texts) s.drawText ? s.drawText(c, x, this) : ftext(c, x, s.text);
     c.restore();
     if (this.flash > 0) { c.globalAlpha = this.flash * 0.5; c.fillStyle = s.flashColor || '#fff'; c.fillRect(0, 0, W, H); c.globalAlpha = 1; }
     s.drawHUD ? s.drawHUD(c, this) : hud(c, this, s.hud);
-    if (this.over) s.drawOver ? s.drawOver(c, this) : over(c, this, s.overOpts);
+    if (this.over) this.race ? raceOver(c, this, s.overOpts) : s.drawOver ? s.drawOver(c, this) : over(c, this, s.overOpts);
     else if (this.frozen) pause(c, this, s.overOpts);
   }
   frame(dt) { this.update(dt); this.render(); }

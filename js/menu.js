@@ -3,7 +3,7 @@
    holding Shift (or clicking it) shows the shifted layer, so capitals and signs like ! § $ % & get their own switch. */
 (() => {
 'use strict';
-const { Keys, DB, store, Room } = TD;
+const { Keys, DB, store, Room, Race } = TD;
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nope = el => { if (!el) return; el.classList.remove('nope'); void el.offsetWidth; el.classList.add('nope'); };
@@ -65,6 +65,9 @@ const M = {
     $('m-board-close').addEventListener('click', () => this.closeModal());
     $('m-sets-form').addEventListener('submit', e => { e.preventDefault(); this.saveSets(); });
     $('m-sets-cancel').addEventListener('click', () => this.closeModal());
+    $('m-race-close').addEventListener('click', () => this.closeModal());
+    $('m-race').addEventListener('click', e => this.raceClick(e));
+    Race.on(() => { if (this.modal === 'm-race') this.renderRace(); });
     // Ticking a set switches to "only these"; choosing "all" leaves the ticks for later.
     $('m-sets-list').addEventListener('change', () => { document.querySelector('[name="m-sets-mode"][value="some"]').checked = true; $('m-sets-err').textContent = ''; });
     window.addEventListener('blur', () => { if (this.held) { this.held = false; this.renderEditor(); } });
@@ -108,24 +111,25 @@ const M = {
     input.setAttribute('aria-valuetext', `${p.name}: ${p.desc}`);
     $('m-pace-name').textContent = this.label(p.name); $('m-pace-desc').textContent = p.desc;
     for (const b of $('m-ticks').children) b.setAttribute('aria-current', String(+b.dataset.pace === this.pace));
-    // Speed over hits: every line starts low and ends at the same top speed, slower tempos just get there later.
-    // The engine reaches full speed after about 52 hits at rate 1; the x axis shows 0 to 220 hits.
-    const top = 18, low = 64, lines = TD.PACE.map((r, i) => {
-      const x = 4 + (Math.min(220, 52 / r) * 192) / 220;
-      return `<polyline class="${i + 1 === this.pace ? 'cur' : ''}" points="4,${low} ${x.toFixed(1)},${top} 196,${top}"/>`;
+    // Speed over hits: every line climbs the same ramp, slower tempos just take more hits for it.
+    // The main ramp ends after about 52 hits at rate 1, then it keeps rising more slowly; the x axis shows 0 to 220 hits.
+    const knee = 30, low = 64, lines = TD.PACE.map((r, i) => {
+      const x = 4 + (Math.min(220, 52 / r) * 192) / 220, end = knee - ((196 - x) / 192) * 16;
+      return `<polyline class="${i + 1 === this.pace ? 'cur' : ''}" points="4,${low} ${x.toFixed(1)},${knee} 196,${end.toFixed(1)}"/>`;
     });
     const cur = lines.splice(this.pace - 1, 1);
-    $('m-graph').innerHTML = `<text x="4" y="11">Vollgas</text><text x="196" y="82" text-anchor="end">Treffer →</text>` +
+    $('m-graph').innerHTML = `<text x="4" y="11">Schwer</text><text x="196" y="82" text-anchor="end">Treffer →</text>` +
       `<text x="4" y="82">Start</text>${lines.join('')}${cur}`;
   },
 
   get visible() { return !$('menu').hidden; },
   get editing() { return this.visible && this.screen === 'edit'; },
-  show(screen = 'home') {
+  // keepRace: coming back from a race to its lobby, so the race connection stays open.
+  show(screen = 'home', keepRace = false) {
     $('menu').hidden = false;
     this.screen = screen;
     $('m-home').hidden = screen !== 'home'; $('m-edit').hidden = screen !== 'edit';
-    this.closeModal(true);
+    this.closeModal(true, keepRace);
     this.render();
     $('menu').scrollTop = 0;
     this.refocus(!this.fresh);
@@ -149,7 +153,7 @@ const M = {
   render() {
     $('m-layer-up').textContent = this.label('A ⇧ groß');
     $('m-name-title').textContent = this.label('Wie soll deine Auswahl heißen?');
-    $('m-board-close').textContent = this.label('Schließen');
+    $('m-board-close').textContent = $('m-race-close').textContent = this.label('Schließen');
     if (this.screen === 'home') this.renderHome(); else if (this.screen === 'edit') this.renderEditor();
   },
 
@@ -232,7 +236,7 @@ const M = {
     const acts = this.roomAsk
       ? `<span class="mn-ask">${r.admin ? 'Du verwaltest diesen Raum; danach kann ihn niemand mehr löschen. ' : ''}Wirklich verlassen? Deine Rekorde im Raum sind dann weg.</span>` +
         '<button type="button" class="mn-tool danger" data-room="leave-yes">Ja, verlassen</button><button type="button" class="mn-tool" data-room="leave-no">Nein</button>'
-      : `<button type="button" class="mn-tool" data-room="board"${dis}>🏆 Bestenliste</button>${r.admin ? `<button type="button" class="mn-tool" data-room="sets"${dis}>⌨ Tasten festlegen</button>` : ''}` +
+      : `<button type="button" class="mn-tool" data-room="board"${dis}>🏆 Bestenliste</button>${Race.enabled ? `<button type="button" class="mn-tool" data-room="race"${dis}>🏁 Wettrennen</button>` : ''}${r.admin ? `<button type="button" class="mn-tool" data-room="sets"${dis}>⌨ Tasten festlegen</button>` : ''}` +
         `<button type="button" class="mn-tool" data-room="rename"${dis}>Anderer Name</button><button type="button" class="mn-tool" data-room="leave"${dis}>Verlassen</button>`;
     const n = r.sets ? r.sets.length : 0, rule = n ? ` Der Raum gibt ${n === 1 ? 'eine Tastenauswahl' : n + ' Tastenauswahlen'} vor.` : '';
     // Only the creator needs to know when an unused room would be deleted.
@@ -248,6 +252,7 @@ const M = {
     if (act === 'join') { $('m-join-input').value = ''; $('m-join-err').textContent = ''; this.openModal('m-join', 'm-join-input'); return; }
     if (act === 'board') { this.openBoard(); return; }
     if (act === 'sets') { this.openSets(); return; }
+    if (act === 'race') { this.openRace(); return; }
     if (act === 'leave' || act === 'leave-no') { this.roomAsk = act === 'leave'; this.renderRoom(); this.focusRoom(this.roomAsk ? 'leave-no' : 'leave'); return; }
     const run = {
       create: async () => { const r = await Room.create(); this.roomMsg = `Neuer Raum! Gib den Code <b class="mn-code">${esc(r.code)}</b> allen, die mitspielen.`; return 'board'; },
@@ -365,6 +370,66 @@ const M = {
     $('m-sets-go').disabled = false;
   },
 
+  // ---------- race: last one standing ----------
+  // Everyone with this dialog open is in the lobby; the room's creator picks the keys and starts.
+  // The game itself is started by the app when the race begins (see app.js).
+  raceOpts: [],
+  openRace() {
+    Race.open();
+    this.raceOpts = this.roomRecs() || [...Keys.PRESETS, ...this.sets];
+    $('m-race-title').textContent = this.label('Wettrennen · Raum ' + Room.current.code);
+    $('m-race-err').textContent = '';
+    this.openModal('m-race', 'm-race-close');
+    this.renderRace();
+  },
+  renderRace() {
+    const m = Race.state, admin = Race.admin, me = Race.me, phase = m ? m.phase : 'lobby';
+    const info = $('m-race-info'), list = $('m-race-list'), host = $('m-race-host'), act = $('m-race-act');
+    if (!m) {
+      info.textContent = Race.status === 'error' || Race.error ? 'Keine Verbindung zum Wettrennen. Versuch es gleich nochmal.' : 'Verbinde …';
+      list.innerHTML = host.innerHTML = act.innerHTML = '';
+      return;
+    }
+    const nick = p => esc(this.label(p.nick)) + (p.id === me ? ' (du)' : '');
+    const keys = m.set ? (m.set.name || (Keys.PRESETS.find(p => p.id === m.set.set) || {}).name || '') : '';
+    if (phase === 'lobby') {
+      info.textContent = admin ? 'Alle, die dieses Fenster offen haben, sind dabei. Wähle die Tasten und starte das Rennen.'
+        : 'Du bist dabei! Lass dieses Fenster offen. Das Rennen startet, wenn die Person, die den Raum erstellt hat, auf Los drückt.';
+      list.innerHTML = `<section class="mn-bd"><h4>In der Lobby (${m.lobby.length})</h4><div class="mn-who">` +
+        m.lobby.map(p => `<span class="mn-tool mn-self">${nick(p)}${p.admin ? ' ★' : ''}</span>`).join('') + '</div></section>';
+    } else {
+      const v = Race.view(), left = v.left;
+      info.textContent = phase === 'run' ? `Das Rennen läuft (${this.label(keys)}): noch ${left} von ${v.total} dabei.`
+        : m.winner ? `Das Rennen ist vorbei. ${this.label(m.players.find(p => p.id === m.winner).nick)} hat gewonnen!` : 'Das Rennen ist vorbei.';
+      const t = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+      list.innerHTML = '<section class="mn-bd"><h4>Rangliste</h4><ol>' + m.players.slice().sort((a, b) => (a.status === 'in' ? 0 : a.place) - (b.status === 'in' ? 0 : b.place))
+        .map(p => `<li class="${p.id === me ? 'me' : ''}"><span class="mn-rank">${p.status === 'in' ? '•' : p.place + '.'}</span><span class="mn-nick">${nick(p)}</span>` +
+          `<span class="mn-score">${p.status === 'in' ? 'fährt noch' : p.status === 'won' ? '🏆 ' + t(p.time) : t(p.time)}</span></li>`).join('') + '</ol></section>';
+    }
+    // Host controls: keys, tempo (from the start menu) and whether the host plays too.
+    const keep = $('m-race-set') ? { set: $('m-race-set').value, play: $('m-race-play').checked } : null;
+    if (admin && phase !== 'run') {
+      const play = keep ? keep.play : store.get('td-race-play', true), cur = keep ? keep.set : store.get('td-race-set', store.get('td-last', 'p-home1'));
+      host.innerHTML = `<label class="mn-race-field">Tasten <select id="m-race-set">${this.raceOpts.map(s => `<option value="${esc(s.id)}"${s.id === cur ? ' selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>` +
+        `<span class="mn-race-field">Tempo: ${esc(this.label(PACES[this.pace - 1].name))} <small>(im Startmenü einstellbar)</small></span>` +
+        `<label class="mn-race-field"><input type="checkbox" id="m-race-play"${play ? ' checked' : ''}> Ich spiele selbst mit</label>`;
+    } else host.innerHTML = '';
+    act.innerHTML = !admin ? '' : phase === 'run' ? '<button type="button" class="mn-tool danger" data-race="stop">Rennen abbrechen</button>'
+      : `<button type="button" class="mn-btn mn-go" data-race="go">${phase === 'done' ? 'Neues Rennen' : 'Los!'}</button>`;
+  },
+  raceClick(e) {
+    const b = e.target.closest('[data-race]');
+    if (!b) return;
+    if (b.dataset.race === 'stop') { Race.stop(); return; }
+    const sel = this.raceOpts.find(s => s.id === $('m-race-set').value), play = $('m-race-play').checked, m = Race.state;
+    const racers = m.lobby.filter(p => play || !p.admin).length;
+    if (!sel) return;
+    if (!racers) { $('m-race-err').textContent = 'Noch niemand in der Lobby. Gib den anderen den Raum-Code, und sie sollen auf „Wettrennen“ drücken.'; return; }
+    $('m-race-err').textContent = '';
+    store.set('td-race-set', sel.id); store.set('td-race-play', play);
+    Race.start(sel, this.pace, play);
+  },
+
   // ---------- editor ----------
   openEditor(rec, copy = false) {
     this.record = rec && !copy ? rec : null;
@@ -467,10 +532,11 @@ const M = {
   },
   modal: null,
   openModal(id, focus) { this.modal = id; $(id).hidden = false; $(focus).focus(); },
-  closeModal(quiet) {
-    for (const id of ['m-name', 'm-discard', 'm-join', 'm-board', 'm-sets']) $(id).hidden = true;
+  closeModal(quiet, keepRace) {
+    for (const id of ['m-name', 'm-discard', 'm-join', 'm-board', 'm-sets', 'm-race']) $(id).hidden = true;
     const was = this.modal; this.modal = null;
-    const back = { 'm-join': 'join', 'm-board': 'board', 'm-sets': 'sets' }[was];
+    if (was === 'm-race' && !keepRace) Race.close();
+    const back = { 'm-join': 'join', 'm-board': 'board', 'm-sets': 'sets', 'm-race': 'race' }[was];
     if (was && !quiet) { if (back) this.focusRoom(back); else $('menu').focus(); }
   },
 

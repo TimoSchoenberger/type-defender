@@ -111,6 +111,7 @@ TD.styles.push({
     c.fillStyle = 'rgba(255,255,255,.85)'; c.beginPath(); c.ellipse(-7, -8, 6, 3.5, -0.7, 0, 6.283); c.fill();
     c.restore();
   },
+  labelY(b) { return b.y - b.kick * 6 + BUBBLE_DY; }, // where the text sits (the engine puts the capital mark next to it)
   drawLabel(c, b, g) { // every bomb shouts its word in a speech bubble
     const y = b.y - b.kick * 6, bw = Math.max(46, b.tw + 30), bh = 40, by = y + BUBBLE_DY, locked = b === g.target;
     c.save(); c.lineJoin = 'round';
@@ -306,6 +307,7 @@ TD.styles.push({
     c.strokeStyle = 'rgba(95,242,214,.55)'; c.lineWidth = 2; c.stroke();
     c.restore();
   },
+  labelY: bob,
   drawLabel(c, b) {
     seg(c, b.text, b.typed, b.x, bob(b) + 2, { font: this.font, rest: S.white, done: 'rgba(95,242,214,.5)', next: S.lime, under: S.lime, ul: 14 });
   },
