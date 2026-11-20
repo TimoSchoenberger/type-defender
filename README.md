@@ -14,7 +14,7 @@ No account, no ads, no tracking. Works in any modern browser, can be installed a
 - The first key locks the cannon onto the lowest bomb that starts with it. Backspace lets go.
 - A wrong key jams the cannon for a moment. Twelve correct keys in a row earn a power-up: laser, shield or multishot.
 - The run ends when the first bomb hits the city. Esc pauses; Enter continues after a 3-2-1 countdown.
-- The game never stops getting harder: every few hits a new stage (*Stufe*) begins, with faster and more bombs and longer words. Each new stage shows its number big in the background; the *Stufen* button turns that off for players it distracts. Every tempo starts at the same speed and climbs the same ramp. Slower tempos take more hits per stage, so younger kids and fast adults can play the same game.
+- The game never stops getting harder: stage after stage (*Stufe*), bombs come faster and in greater numbers, and the words get longer. Bombs keep coming faster, so each stage takes more hits than the one before, and every stage lasts about the same time. Each new stage shows its number big in the background; the *Stufen* button turns that off for players it distracts. Every tempo starts at the same speed and climbs the same ramp. Slower tempos take more hits per stage, so younger kids and fast adults can play the same game. The game-over screen and the room leaderboard show which keys a record was played with.
 - **Class and family rooms:** create a room, share its code (such as `TIGER-482`) and compare records on a shared leaderboard. Everyone gets a generated nickname, so nobody has to type a name. A teacher can prescribe which key sets everyone in the room practises.
 - **Races (last one standing):** in a room, everyone opens *Wettrennen*, the room's creator picks the keys and starts. All devices get the same bombs and the same rising difficulty; a list shows who is still in and who is out after how long. The last one left wins.
 - A single capital letter gets a small ⇧ arrow, so C and c, O and o or I and l can be told apart.
@@ -53,7 +53,7 @@ Any static file server works. Pushing to `main` publishes the site through GitHu
 | `index.html` | The page: top bar, style picker, start menu and key editor markup, game canvas. |
 | `css/app.css` | App shell and style picker. |
 | `css/menu.css` | Start menu and key editor. One layout; each style's look is a set of CSS tokens under `.mn[data-look=…]`. |
-| `js/engine.js` | Game rules, timing, input, power-ups and the shared HUD, drawn on a logical 960×600 stage. Difficulty ramps read `heat()` = hits × tempo factor (`PACE`); past `RAMP` they keep rising without a cap. |
+| `js/engine.js` | Game rules, timing, input, power-ups and the shared HUD, drawn on a logical 960×600 stage. Difficulty ramps read `heat()` = hits × tempo factor (`PACE`); past `RAMP` they keep rising without a cap. A stage (`STAGE`) is a fixed stretch of time at the bomb rate, not a fixed number of hits. |
 | `js/s-*.js` | The six art styles: drawing code, sounds and song for each. |
 | `js/music.js` | Step sequencer that synthesises each style's song live. It gets busier as a run heats up and adds a layer during power-ups. |
 | `js/keys.js` | QWERTZ and QWERTY layouts, preset key sets, the German word list, and the code that turns a key selection into letters, syllables and words. |

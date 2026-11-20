@@ -17,7 +17,7 @@ const PACE = [0.25, 0.4, 0.55, 0.75, 1];
 // Difficulty never stops rising: the main ramp is done at heat 50 (50 hits at full pace),
 // after that bombs keep getting faster and denser, slowly but without a cap.
 const RAMP = 50;
-const STAGE = 6;     // heat per stage ("Stufe"), shown in the HUD
+const STAGE = 14;    // seconds per stage ("Stufe") for a player who keeps up at full pace; shown in the HUD
 const SPLASH = 2.4;  // seconds the big stage number stays in the background
 const COUNT = 0.75;  // seconds per step of the 3-2-1 countdown after a pause
 const RACE_SEC = 2.5; // in a race, difficulty follows the clock: one unit of heat per this many seconds (at full pace)
@@ -32,6 +32,17 @@ const rng = seed => () => {
   t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
+// Mean seconds between bombs at a given heat (spawnEvery adds ±15 % to it).
+const gap = h => Math.max(0.95, 2.4 - h * 0.035) / (1 + Math.max(0, h - RAMP) * 0.012);
+// Bombs come faster as heat rises, so a fixed number of hits per stage would make stages ever shorter.
+// Instead a stage ends after STAGE seconds' worth of bombs: SECS[i] is the time it takes to reach heat i/2.
+const SECS = [0];
+function secsAt(h) {
+  const i = h * 2;
+  while (SECS.length <= i + 1) { const j = SECS.length - 1; SECS.push(SECS[j] + gap(j / 2 + 0.25) / 2); }
+  const f = Math.floor(i);
+  return SECS[f] + (SECS[f + 1] - SECS[f]) * (i - f);
+}
 const domeY = x => { const d = (x - DOME.cx) / DOME.rx; return DOME.cy - DOME.ry * Math.sqrt(Math.max(0, 1 - d * d)); };
 
 // Demo content: home-row letters first, then syllables, then short German words (no umlauts).
@@ -219,13 +230,15 @@ function over(c, g, o) {
   c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
   const T = (txt, size, y, col) => {
     c.font = f(size);
+    const w = c.measureText(txt).width;
+    if (w > W - 60) { size = Math.floor(size * (W - 60) / w); c.font = f(size); } // a long line (tempo and keys) shrinks to fit
     if (o.stroke) { c.lineWidth = Math.max(4, size / 6); c.strokeStyle = o.stroke; c.strokeText(txt, W / 2, y); }
     c.fillStyle = col; c.fillText(txt, W / 2, y);
   };
   T(o.title, o.titleSize || 64, 222, o.accent);
   T(`${g.score} Punkte`, 32, 300, o.color);
   T(`Genauigkeit ${acc} % · Rekord ${g.best}`, 20, 342, o.color);
-  T(`Stufe ${g.stage()}` + (g.paceName ? ` · Tempo: ${g.paceName}` : ''), 17, 374, o.color);
+  T(`Stufe ${g.stage()}` + (g.paceName ? ` · Tempo: ${g.paceName}` : '') + (g.keysName ? ' · ' + g.keysName : ''), 17, 374, o.color);
   if (g.roomLine) T(g.roomLine, 17, 402, o.accent); // rank in the player's class or family room, filled in once the server answers
   const hy = g.roomLine ? 444 : 418;
   if (g.overT > 0.6) { c.globalAlpha = a * (0.6 + 0.4 * Math.sin(g.t * 5)); T(g.onMenu ? 'Enter: nochmal · Esc: Menü' : 'Enter oder Leertaste: nochmal', 22, hy, o.color); }
@@ -239,6 +252,8 @@ function pause(c, g, o) {
   c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
   const T = (txt, size, y, col) => {
     c.font = f(size);
+    const w = c.measureText(txt).width;
+    if (w > W - 60) { size = Math.floor(size * (W - 60) / w); c.font = f(size); } // a long line (tempo and keys) shrinks to fit
     if (o.stroke) { c.lineWidth = Math.max(4, size / 6); c.strokeStyle = o.stroke; c.strokeText(txt, W / 2, y); }
     c.fillStyle = col; c.fillText(txt, W / 2, y);
   };
@@ -293,6 +308,8 @@ function raceOver(c, g, o) {
   c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
   const T = (txt, size, y, col) => {
     c.font = f(size);
+    const w = c.measureText(txt).width;
+    if (w > W - 60) { size = Math.floor(size * (W - 60) / w); c.font = f(size); } // a long line (tempo and keys) shrinks to fit
     if (o.stroke) { c.lineWidth = Math.max(4, size / 6); c.strokeStyle = o.stroke; c.strokeText(txt, W / 2, y); }
     c.fillStyle = col; c.fillText(txt, W / 2, y);
   };
@@ -345,6 +362,7 @@ class Game {
     this.canvas = canvas; this.ctx = canvas.getContext('2d');
     this.mode = mode; this.style = style; this.content = POOL;
     this.pace = 1; this.paceName = '';  // set from the menu's tempo slider
+    this.keysName = ''; // which keys the run uses, for the game-over screen
     this.best = mode === 'play' ? store.get('td-best', 0) : 0;
     this.onOver = null;  // called with the game when a play-mode run ends
     this.edges = {}; this.fill = false;
@@ -403,7 +421,7 @@ class Game {
   heat() { return (this.race ? Math.max(0, this.race.clock()) / RACE_SEC : this.kills) * this.pace; }
   // Heat beyond the main ramp; it keeps pushing speed and density up for as long as the run lasts.
   extra() { return Math.max(0, this.heat() - RAMP); }
-  stage() { return 1 + Math.floor(this.heat() / STAGE); }
+  stage() { return 1 + Math.floor((this.race ? this.heat() * RACE_SEC : secsAt(this.heat())) / STAGE); } // a race's heat already follows the clock
   tier() { const h = this.heat(); return this.mode === 'auto' ? 2 : h < 6 ? 0 : h < 14 ? 1 : h < RAMP ? 2 : 3; }
   pickText(R = Math.random) {
     const C = this.content, has = k => C[k] && C[k].length, pick = a => a[(R() * a.length) | 0];
@@ -413,7 +431,7 @@ class Game {
     for (const [k, w] of opts) if ((r -= w) <= 0) return pick(C[k]);
     return pick(C[opts[0][0]]);
   }
-  spawnEvery() { return this.mode === 'auto' ? rand(1.5, 2.2) : Math.max(0.95, 2.4 - this.heat() * 0.035) / (1 + this.extra() * 0.012) * rand(0.85, 1.15); }
+  spawnEvery() { return this.mode === 'auto' ? rand(1.5, 2.2) : gap(this.heat()) * rand(0.85, 1.15); }
   maxBombs() { return this.mode === 'auto' ? 7 : Math.min(8, 3 + Math.floor(this.heat() / 7)) + Math.min(3, Math.floor(this.extra() / 20)); }
   spawn() {
     // In a race the n-th bomb is the same on every device: its text, place and speed come from the shared seed.

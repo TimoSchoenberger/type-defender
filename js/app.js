@@ -131,12 +131,18 @@ function cols() { const top = tiles[0].offsetTop; return tiles.filter(t => t.off
 // ---------- menu and game ----------
 function showMenu(screen = 'home') { leaveRace(); pickEl.hidden = true; mode = 'menu'; Menu.show(screen); paint(); }
 // A key set from the menu becomes the game's content; records are kept per set and tempo.
+// What a run is played with, for the game-over screen: the preset's name, a short custom set's keys, or how many keys.
+function keysName(sel) {
+  if (sel.builtin || Keys.PRESETS.some(p => p.id === sel.id)) return sel.name;
+  const chars = Keys.ordered([...sel.chars], Menu.layout);
+  return chars.length <= 8 ? (chars.length === 1 ? 'Taste: ' : 'Tasten: ') + chars.join(' ') : `${chars.length} Tasten`;
+}
 function startGame(sel) {
   Menu.hide(); mode = 'game';
   const pace = Menu.paceInfo();
   arena.pace = pace.rate; arena.paceName = pace.name;
   arena.race = null; arena.raceView = null;
-  arena.content = Keys.build(sel); arena.best = Menu.bestOf(sel.id); arena.reset();
+  arena.content = Keys.build(sel); arena.best = Menu.bestOf(sel.id); arena.keysName = keysName(sel); arena.reset();
   arena.onOver = g => {
     Menu.setBest(sel.id, g.best);
     Room.game();
@@ -163,7 +169,7 @@ function startRace(m) {
   racing = raceId(m);
   pickEl.hidden = true; Menu.hide(); mode = 'game';
   arena.pace = TD.PACE[m.pace - 1]; arena.paceName = '';
-  arena.content = Keys.build(sel, TD.util.rng(m.seed));
+  arena.content = Keys.build(sel, TD.util.rng(m.seed)); arena.keysName = keysName(sel);
   arena.race = { seed: m.seed, clock: () => (Race.now() - m.start) / 1000 };
   arena.best = 0; arena.reset();
   arena.countT = Math.max(0.001, -arena.race.clock());

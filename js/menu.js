@@ -178,7 +178,7 @@ const M = {
     return `<article class="mn-card${s.builtin ? '' : ' own'}" data-id="${esc(s.id)}">${badge}
       <button type="button" class="mn-main" data-act="play" aria-label="${esc(s.name)} spielen">
         <span class="mn-name">${esc(this.label(s.name))}</span>
-        <span class="mn-note">${esc(s.note || `${chars.length} Tasten, selbst gemacht`)}</span>
+        <span class="mn-note">${esc(s.note || `${chars.length} ${chars.length === 1 ? 'Taste' : 'Tasten'}, selbst gemacht`)}</span>
         ${this.mini(chars)}
         <span class="mn-keys">${esc(keys)}</span>
         <span class="mn-row2"><span class="mn-best">${best ? 'Rekord ' + best : 'Kein Rekord'}</span><span class="mn-los">Los!</span></span>
@@ -294,12 +294,13 @@ const M = {
   renderBoard() {
     const d = this.boardData, me = Room.current.player, admin = Room.isAdmin;
     const order = b => { const i = Keys.PRESETS.findIndex(x => x.id === b.set); return i < 0 ? 99 : i; };
+    // Custom sets also say how many keys they have, so a record on one key reads as what it is.
     const nameOf = b => {
-      if (b.name) return b.name;
       const p = Keys.PRESETS.find(x => x.id === b.set);
-      if (p) return p.name;
-      const keys = Keys.ordered([...b.label], this.layout);
-      return keys.length && keys.length <= 14 ? 'Eigene: ' + keys.join(' ') : `Eigene Auswahl (${keys.length} Tasten)`;
+      if (p && !b.name) return p.name;
+      const keys = Keys.ordered([...(b.label || '')], this.layout), n = `${keys.length} ${keys.length === 1 ? 'Taste' : 'Tasten'}`;
+      if (b.name) return keys.length && !p ? `${b.name} (${n})` : b.name;
+      return keys.length && keys.length <= 14 ? `Eigene: ${keys.join(' ')} (${n})` : `Eigene Auswahl (${n})`;
     };
     // Equal scores share a place.
     const row = (r, i, rows) => `<li class="${r.player === me ? 'me' : ''}"><span class="mn-rank">${rows.findIndex(x => x.score === r.score) + 1}.</span><span class="mn-nick">${esc(this.label(r.nick))}${r.player === me ? ' (du)' : ''}</span><span class="mn-score">${r.score}</span></li>`;
