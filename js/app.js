@@ -67,13 +67,16 @@ const HELP = {
   pick: 'Klick auf einen Stil oder drück 1 bis 6 · Pfeiltasten: wählen · Enter: los',
   home: 'Klick auf eine Karte oder drück Enter · ← →: Tempo · Esc: Stil wählen',
   edit: 'Tippe Tasten zum An- und Ausschalten · ⇧ halten: Großbuchstaben und Zeichen · Enter: fertig · Esc: zurück',
-  game: 'Tippe die Zeichen auf den Bomben · Rücktaste: Ziel lösen · Esc: Tastenauswahl'
+  game: 'Tippe die Zeichen auf den Bomben · Rücktaste: Ziel lösen · Esc: Pause',
+  pause: 'Enter oder Klick: weiterspielen · Esc: zur Tastenauswahl',
+  over: 'Enter: nochmal · Esc: Tastenauswahl'
 };
 function paint() {
   arenaCanvas.style.visibility = mode === 'game' ? '' : 'hidden';
   menuBtn.hidden = mode !== 'game';
   styleBtn.hidden = mode === 'pick';
-  helpEl.textContent = mode === 'pick' ? HELP.pick + (back ? ' · Esc: zurück' : '') : mode === 'menu' ? HELP[Menu.screen] || HELP.home : HELP.game;
+  helpEl.textContent = mode === 'pick' ? HELP.pick + (back ? ' · Esc: zurück' : '') : mode === 'menu' ? HELP[Menu.screen] || HELP.home
+    : arena.over ? HELP.over : arena.paused ? HELP.pause : HELP.game;
   capsEl.hidden = !(caps && mode === 'game' && arena.content.cased);
 }
 
@@ -85,6 +88,7 @@ function setStyle(id) {
 }
 // The picker lies over the menu or the paused game, so closing it returns to exactly where you were.
 function showPick() {
+  if (mode === 'game') arena.pause();
   if (mode !== 'pick') back = mode;
   mode = 'pick'; pickEl.hidden = false; pickEl.scrollTop = 0;
   paint();
@@ -93,7 +97,7 @@ function showPick() {
 function closePick() {
   pickEl.hidden = true;
   const to = back || 'menu'; back = null;
-  if (to === 'game') { mode = 'game'; appEl.focus(); }
+  if (to === 'game') { mode = 'game'; arena.resume(); appEl.focus(); }
   else if (Menu.visible) { mode = 'menu'; Menu.refocus(); }
   else return showMenu();
   paint();
@@ -142,7 +146,7 @@ styleBtn.addEventListener('click', showPick);
 menuBtn.addEventListener('click', () => showMenu());
 soundBtn.addEventListener('click', () => { Sfx.enabled = !Sfx.enabled; store.set('td-sound', Sfx.enabled); if (Sfx.enabled) Sfx.unlock(); paintSound(); refocus(); });
 musicBtn.addEventListener('click', () => { Music.setEnabled(!Music.enabled); Sfx.unlock(); paintSound(); refocus(); });
-arenaCanvas.addEventListener('pointerdown', () => appEl.focus());
+arenaCanvas.addEventListener('pointerdown', () => { appEl.focus(); if (arena.paused) { arena.resume(); paint(); } });
 function refocus() { if (mode === 'game') appEl.focus(); }
 
 // Browsers only start audio after a click or key press.
@@ -162,16 +166,25 @@ window.addEventListener('keydown', e => {
   if (e.getModifierState) caps = e.getModifierState('CapsLock');
   if (mode === 'pick') { pickKey(e); paint(); return; }
   if (mode === 'menu') { if (Menu.keydown(e) === 'close') showPick(); paint(); return; }
-  paint();
-  if (e.key === 'Escape') { e.preventDefault(); showMenu(); return; }
+  // Esc pauses a running game; only a second Esc (or Esc after the run) leaves for the key sets.
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    if (e.repeat) return;
+    if (arena.over || arena.paused) showMenu(); else { arena.pause(); paint(); }
+    return;
+  }
   // AltGr (Ctrl+Alt on Windows) types @, € and friends, so only plain Ctrl and Cmd shortcuts are skipped.
   const altgr = e.getModifierState && e.getModifierState('AltGraph');
   if (e.metaKey || (e.ctrlKey && !altgr) || e.repeat || e.key === 'Tab') return;
   if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('button')) return;
   if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Enter') { e.preventDefault(); arena.key(e.key); }
+  paint();
 });
 window.addEventListener('keyup', e => { if (mode === 'menu') Menu.keyup(e); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) Music.stop(0.1); });
+// Switching tabs or windows pauses the run instead of letting bombs fall unseen.
+function away() { if (mode === 'game' && !arena.over) { arena.pause(); paint(); } }
+document.addEventListener('visibilitychange', () => { if (document.hidden) { Music.stop(0.1); away(); } });
+window.addEventListener('blur', away);
 
 let last = performance.now();
 function loop(now) {
@@ -179,7 +192,7 @@ function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   try {
-    if (mode === 'game') { arena.frame(dt); Music.follow(arena, arena.style.music); return; }
+    if (mode === 'game') { arena.frame(dt); arena.paused ? Music.calm(arena.style.music) : Music.follow(arena, arena.style.music); return; }
     if (mode === 'menu') { Music.calm(arena.style.music); return; }
     // Picker: animate the visible tiles; the hovered or focused one plays its song.
     let song = arena.style.music;

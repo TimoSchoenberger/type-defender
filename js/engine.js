@@ -11,9 +11,14 @@ const JAM = 0.5;     // seconds the cannon stays jammed after a wrong key
 const POWERS = ['laser', 'shield', 'multi'];
 const POWER_NAME = { laser: 'Laser!', shield: 'Schutzschild!', multi: 'Mehrfachschuss!' };
 const POWER_T = 10;  // seconds a laser or multishot lasts
-// Tempo levels: how fast a run heats up. Every level starts and tops out at the same speed;
-// slower ones just take more hits to get there (1 = the original ramp, full speed after ~45 hits).
+// Tempo levels: how fast a run heats up. Every level starts at the same speed and climbs the same ramp;
+// slower ones just take more hits per step (1 = the original ramp).
 const PACE = [0.25, 0.4, 0.55, 0.75, 1];
+// Difficulty never stops rising: the main ramp is done at heat 50 (50 hits at full pace),
+// after that bombs keep getting faster and denser, slowly but without a cap.
+const RAMP = 50;
+const STAGE = 6;     // heat per stage ("Stufe"), shown in the HUD
+const COUNT = 0.75;  // seconds per step of the 3-2-1 countdown after a pause
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[(Math.random() * a.length) | 0];
@@ -40,7 +45,14 @@ const POOL = {
   cased: false
 };
 // What falls at each difficulty tier, as [pool, weight]; empty pools are skipped.
-const TIERS = [[['start', 1]], [['letters', 0.55], ['syl', 0.45]], [['letters', 0.35], ['syl', 0.35], ['words', 0.3]]];
+const TIERS = [[['start', 1]], [['letters', 0.55], ['syl', 0.45]], [['letters', 0.35], ['syl', 0.35], ['words', 0.3]],
+  [['letters', 0.25], ['syl', 0.3], ['words', 0.45]]];
+// Sounds every style shares unless it brings its own.
+const SFX = {
+  stage: [{ f: 523, d: 0.1, type: 'triangle', v: 0.08 }, { f: 784, at: 0.09, d: 0.18, type: 'triangle', v: 0.08 }],
+  tick: [{ f: 660, d: 0.08, type: 'sine', v: 0.09 }],
+  go: [{ f: 990, d: 0.2, type: 'sine', v: 0.1 }]
+};
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -146,11 +158,14 @@ function ftext(c, x, o) {
 function hud(c, g, o) {
   const f = s => o.font.replace('{s}', s);
   c.save(); c.textBaseline = 'middle'; c.textAlign = 'left';
-  if (o.panel) o.panel(c, 16, 14, 214, g.mode === 'play' ? 66 : 44, 'score');
+  if (o.panel) o.panel(c, 16, 14, 214, g.mode === 'play' ? 86 : 44, 'score');
   c.font = f(14); c.fillStyle = o.dim; c.fillText('PUNKTE', 32, 37);
   const lx = 32 + c.measureText('PUNKTE').width + 12;
   c.font = f(25); c.fillStyle = o.color; c.fillText(String(g.score).padStart(5, '0'), lx, 37);
-  if (g.mode === 'play') { c.font = f(13); c.fillStyle = o.dim; c.fillText('REKORD ' + String(g.best).padStart(5, '0'), 32, 63); }
+  if (g.mode === 'play') {
+    c.font = f(13); c.fillStyle = o.dim; c.fillText('REKORD ' + String(g.best).padStart(5, '0'), 32, 61);
+    c.fillStyle = o.color; c.fillText('STUFE ' + g.stage(), 32, 83);
+  }
   const n = STREAK, sw = 14, gap = 5, mw = n * sw + (n - 1) * gap, mx = W / 2 - mw / 2, fill = g.combo % n;
   if (o.panel) o.panel(c, mx - 16, 14, mw + 32, 44, 'meter');
   for (let i = 0; i < n; i++) {
@@ -206,10 +221,31 @@ function over(c, g, o) {
   T(o.title, o.titleSize || 64, 222, o.accent);
   T(`${g.score} Punkte`, 32, 300, o.color);
   T(`Genauigkeit ${acc} % · Rekord ${g.best}`, 20, 342, o.color);
-  if (g.paceName) T(`Tempo: ${g.paceName}`, 17, 374, o.color);
+  T(`Stufe ${g.stage()}` + (g.paceName ? ` · Tempo: ${g.paceName}` : ''), 17, 374, o.color);
   if (g.roomLine) T(g.roomLine, 17, 402, o.accent); // rank in the player's class or family room, filled in once the server answers
   const hy = g.roomLine ? 444 : 418;
   if (g.overT > 0.6) { c.globalAlpha = a * (0.6 + 0.4 * Math.sin(g.t * 5)); T(g.onMenu ? 'Enter: nochmal · Esc: Menü' : 'Enter oder Leertaste: nochmal', 22, hy, o.color); }
+  c.restore();
+}
+
+// Pause: the run stays frozen until Enter, then a 3-2-1 countdown gives the hands time to find the keys.
+function pause(c, g, o) {
+  const f = s => o.font.replace('{s}', s);
+  c.save(); c.fillStyle = o.dim; c.globalAlpha = g.paused ? 1 : 0.5; c.fillRect(0, 0, W, H); c.globalAlpha = 1;
+  c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
+  const T = (txt, size, y, col) => {
+    c.font = f(size);
+    if (o.stroke) { c.lineWidth = Math.max(4, size / 6); c.strokeStyle = o.stroke; c.strokeText(txt, W / 2, y); }
+    c.fillStyle = col; c.fillText(txt, W / 2, y);
+  };
+  if (g.paused) {
+    T('Pause', o.titleSize || 64, 236, o.accent);
+    T('Enter: weiterspielen', 24, 318, o.color);
+    T('Esc: zur Tastenauswahl', 20, 360, o.color);
+  } else {
+    const n = Math.ceil(g.countT / COUNT), k = g.countT / COUNT - n + 1; // k runs 1 → 0 within each step
+    c.globalAlpha = Math.min(1, k * 3); T(String(n), Math.round(110 + 40 * k), 280, o.accent);
+  }
   c.restore();
 }
 
@@ -231,7 +267,7 @@ class Game {
       target: null, hint: null, score: 0, combo: 0, kills: 0, hits: 0, errors: 0,
       jam: 0, recoil: 0, shake: 0, flash: 0, angle: -Math.PI / 2,
       weapon: 'cannon', weaponT: 0, powerIdx: 0, shield: false, shieldVis: 0, shieldT: 0,
-      letThrough: null, over: false, overT: 0, roomLine: '', spawnT: 0.6, aiT: 0.8, nid: 1
+      letThrough: null, over: false, overT: 0, roomLine: '', paused: false, countT: 0, stageSeen: 1, spawnT: 0.6, aiT: 0.8, nid: 1
     });
     if (this.mode === 'auto') for (const y of [80, 190, 290, 380]) { const b = this.spawn(); if (b) b.y = y; }
   }
@@ -259,7 +295,10 @@ class Game {
   }
   // How far the run has heated up, in "hits at full pace". All difficulty ramps read this.
   heat() { return this.kills * this.pace; }
-  tier() { const h = this.heat(); return this.mode === 'auto' ? 2 : h < 6 ? 0 : h < 14 ? 1 : 2; }
+  // Heat beyond the main ramp; it keeps pushing speed and density up for as long as the run lasts.
+  extra() { return Math.max(0, this.heat() - RAMP); }
+  stage() { return 1 + Math.floor(this.heat() / STAGE); }
+  tier() { const h = this.heat(); return this.mode === 'auto' ? 2 : h < 6 ? 0 : h < 14 ? 1 : h < RAMP ? 2 : 3; }
   pickText() {
     const C = this.content, has = k => C[k] && C[k].length;
     let opts = TIERS[this.tier()].filter(([k]) => has(k));
@@ -268,8 +307,8 @@ class Game {
     for (const [k, w] of opts) if ((r -= w) <= 0) return pick(C[k]);
     return pick(C[opts[0][0]]);
   }
-  spawnEvery() { return this.mode === 'auto' ? rand(1.5, 2.2) : Math.max(0.95, 2.4 - this.heat() * 0.035) * rand(0.85, 1.15); }
-  maxBombs() { return this.mode === 'auto' ? 7 : Math.min(8, 3 + Math.floor(this.heat() / 7)); }
+  spawnEvery() { return this.mode === 'auto' ? rand(1.5, 2.2) : Math.max(0.95, 2.4 - this.heat() * 0.035) / (1 + this.extra() * 0.012) * rand(0.85, 1.15); }
+  maxBombs() { return this.mode === 'auto' ? 7 : Math.min(8, 3 + Math.floor(this.heat() / 7)) + Math.min(3, Math.floor(this.extra() / 20)); }
   spawn() {
     const live = this.bombs.filter(b => !b.doomed);
     let text = null;
@@ -290,7 +329,7 @@ class Game {
       if (!live.some(o => o.y < 220 && Math.abs(o.x - x) < (o.w + b.w) / 2 + 30)) break;
     }
     b.x = b.baseX = x; b.y = -b.h / 2 - 8;
-    b.vy = this.mode === 'auto' ? rand(30, 40) : (24 + Math.min(36, this.heat() * 0.7)) * rand(0.9, 1.1);
+    b.vy = this.mode === 'auto' ? rand(30, 40) : (24 + Math.min(36, this.heat() * 0.7) + this.extra() * 0.3) * rand(0.9, 1.1);
     this.bombs.push(b);
     return b;
   }
@@ -299,7 +338,7 @@ class Game {
   say(text, x, y, o = {}) { this.texts.push(Object.assign({ text, x, y, size: 30, vy: -30, rot: 0 }, o, { life: o.life || 1, max: o.life || 1 })); }
   sfx(name) {
     if (this.mode !== 'play' || !this.style.sfx) return;
-    let s = this.style.sfx[name];
+    let s = this.style.sfx[name] || SFX[name];
     // Power-up ending: the power-up jingle played backwards and softer, unless the style has its own.
     if (!s && name === 'end' && this.style.sfx.power) {
       const p = this.style.sfx.power, last = Math.max(...p.map(x => x.at || 0));
@@ -311,6 +350,8 @@ class Game {
   // ---------- input ----------
   key(k) {
     if (this.over) { if ((k === 'Enter' || k === ' ') && this.overT > 0.6) this.reset(); return; }
+    if (this.paused) { if (k === 'Enter' || k === ' ') this.resume(); return; }
+    if (this.countT > 0) return;
     if (k === 'Backspace') { if (this.target) { this.target.typed = 0; this.target = null; } return; }
     if (!k || k.length !== 1 || this.jam > 0) return;
     if (!this.content.cased) k = k.toLowerCase(); // without capitals in the set, Caps Lock should not hurt
@@ -322,6 +363,10 @@ class Game {
     if (!best) { this.misfire(); return; }
     this.target = best; this.hitKey(best);
   }
+  // A running game pauses; resume() counts down 3-2-1 before it continues.
+  pause() { if (this.mode === 'play' && !this.over) { this.paused = true; this.countT = 0; if (this.target) { this.target.typed = 0; this.target = null; } } }
+  resume() { if (this.paused) { this.paused = false; this.countT = 3 * COUNT; this.sfx('tick'); } }
+  get frozen() { return this.paused || this.countT > 0; }
   hitKey(b) {
     b.typed++; this.combo++; this.hits++;
     const final = b.typed >= b.text.length;
@@ -388,7 +433,11 @@ class Game {
     if (b.dead) return;
     b.dead = b.doomed = true;
     if (this.target === b) this.target = null;
-    if (scored) { this.kills++; this.score += 10 * b.text.length; }
+    if (scored) {
+      this.kills++; this.score += 10 * b.text.length;
+      const n = this.stage();
+      if (this.mode === 'play' && n > this.stageSeen) { this.stageSeen = n; this.say(`Stufe ${n}`, W / 2, 200, { size: 34, life: 1.2, vy: -14, kind: 'power' }); this.sfx('stage'); }
+    }
     this.style.explode(this, b); this.sfx('boom');
   }
   impact(b) {
@@ -426,6 +475,13 @@ class Game {
 
   // ---------- simulation ----------
   update(dt) {
+    if (this.paused) return;
+    if (this.countT > 0) {
+      const step = Math.ceil(this.countT / COUNT);
+      this.countT -= dt;
+      if (this.countT <= 0) { this.countT = 0; this.sfx('go'); } else if (Math.ceil(this.countT / COUNT) < step) this.sfx('tick');
+      return;
+    }
     this.t += dt;
     const s = this.style;
     this.shake = Math.max(0, this.shake - dt * 30);
@@ -504,6 +560,7 @@ class Game {
     if (this.flash > 0) { c.globalAlpha = this.flash * 0.5; c.fillStyle = s.flashColor || '#fff'; c.fillRect(0, 0, W, H); c.globalAlpha = 1; }
     s.drawHUD ? s.drawHUD(c, this) : hud(c, this, s.hud);
     if (this.over) s.drawOver ? s.drawOver(c, this) : over(c, this, s.overOpts);
+    else if (this.frozen) pause(c, this, s.overOpts);
   }
   frame(dt) { this.update(dt); this.render(); }
 }

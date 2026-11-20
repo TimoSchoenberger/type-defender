@@ -3,7 +3,8 @@
    Secrets (player and admin tokens) are only stored as SHA-256 hashes. */
 
 const DAY = 86400000;
-const IDLE_DAYS = 90;          // rooms without joins or scores for this long are deleted
+const IDLE_DAYS = 90;          // rooms nobody opens or plays in for this long are deleted
+const TOUCH_GAP = 3600000;     // opening a room counts as use, but writes that down at most once an hour
 const KEEP_VISIT_DAYS = 400;
 // Hard caps bound the database size whatever happens (about 3,000 rooms × 60 players × 20 boards at most),
 // and per-IP rate limits (wrangler.toml) keep one visitor from using up the free tier's daily writes.
@@ -91,14 +92,14 @@ async function route(req, env, url) {
   const room = await env.DB.prepare('SELECT * FROM rooms WHERE code = ?').bind(code).first();
   if (!room) fail(404, 'no-room');
   const tail = p.slice(3).join('/');
-  if (tail === '' && m === 'GET') { await player(req, env, room); return roomInfo(env, room); } // members only
+  if (tail === '' && m === 'GET') { await player(req, env, room); await touch(env, room); return roomInfo(env, room); } // members only
   if (tail === 'sets' && m === 'PUT') { await isAdmin(req, room); return putSets(req, env, room); }
   if (tail === '' && m === 'DELETE') { await isAdmin(req, room); await dropRoom(env, code); return json({ ok: true }); }
   if (tail === 'join' && m === 'POST') return join(env, room);
   if (tail === 'rename' && m === 'POST') return rename(env, room, await player(req, env, room));
   if (tail === 'leave' && m === 'POST') { const pl = await player(req, env, room); await dropPlayer(env, code, pl.id); return json({ ok: true }); }
   if (tail === 'scores' && m === 'POST') return postScore(req, env, room, await player(req, env, room));
-  if (tail === 'scores' && m === 'GET') { await player(req, env, room); return board(env, room, url); } // members only
+  if (tail === 'scores' && m === 'GET') { await player(req, env, room); await touch(env, room); return board(env, room, url); } // members only
   if (p[3] === 'players' && p[4] && m === 'DELETE') { await isAdmin(req, room); await dropPlayer(env, code, p[4]); return json({ ok: true }); }
   fail(404, 'not-found');
 }
@@ -122,7 +123,14 @@ async function createRoom(env) {
 }
 async function roomInfo(env, room) {
   const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM players WHERE room = ?').bind(room.code).first();
-  return json({ code: room.code, players: n.n, created: room.created, sets: roomSets(room) });
+  return json({ code: room.code, players: n.n, created: room.created, expires: room.active + IDLE_DAYS * DAY, sets: roomSets(room) });
+}
+// Every join, run and visit by a member keeps the room alive for another IDLE_DAYS.
+async function touch(env, room) {
+  const now = Date.now();
+  if (now - room.active < TOUCH_GAP) return;
+  await env.DB.prepare('UPDATE rooms SET active = ? WHERE code = ?').bind(now, room.code).run();
+  room.active = now;
 }
 
 // ---------- prescribed key sets ----------
@@ -165,7 +173,7 @@ async function join(env, room) {
     env.DB.prepare('INSERT INTO players (id, room, nick, token, created) VALUES (?, ?, ?, ?, ?)').bind(id, room.code, nick, await hash(secret), now),
     env.DB.prepare('UPDATE rooms SET active = ? WHERE code = ?').bind(now, room.code)
   ]);
-  return json({ code: room.code, player: id, token: secret, nick, sets: roomSets(room) }, 201);
+  return json({ code: room.code, player: id, token: secret, nick, expires: now + IDLE_DAYS * DAY, sets: roomSets(room) }, 201);
 }
 async function rename(env, room, pl) {
   const nick = await freeNick(env, room.code);

@@ -43,22 +43,23 @@ const Room = {
     const code = normCode(input);
     if (!code) throw new ApiError('no-room', 404);
     const r = await call('POST', `/rooms/${code}/join`);
-    store.set('td-room', { code: r.code, player: r.player, token: r.token, nick: r.nick, sets: r.sets || null, ...(admin ? { admin } : {}) });
+    store.set('td-room', { code: r.code, player: r.player, token: r.token, nick: r.nick, sets: r.sets || null, expires: r.expires || 0, ...(admin ? { admin } : {}) });
     store.set('td-room-queue', []);
     return this.current;
   },
   // Key sets the room prescribes (null: every set counts). Cached, so they also apply offline.
   get sets() { const r = this.current; return (r && r.sets) || null; },
-  // Fetch the room's current settings. Resolves true when the prescribed sets changed.
+  // Fetch the room's current settings; opening the room also keeps it alive on the server.
+  // Resolves true when the prescribed sets or the expiry date changed.
   async refresh() {
     const r = this.current;
     if (!r) return false;
     let info;
     try { info = await call('GET', `/rooms/${r.code}`, null, this.auth()); }
     catch (err) { this.gone(err); return err.code === 'no-room' || err.code === 'no-player'; }
-    const now = this.current, sets = info.sets || null;
-    if (!now || JSON.stringify(now.sets || null) === JSON.stringify(sets)) return false;
-    store.set('td-room', { ...now, sets });
+    const now = this.current, sets = info.sets || null, expires = info.expires || 0;
+    if (!now || (JSON.stringify(now.sets || null) === JSON.stringify(sets) && now.expires === expires)) return false;
+    store.set('td-room', { ...now, sets, expires });
     return true;
   },
   // Admin: prescribe these key sets (menu records: presets or custom sets), or null for all.

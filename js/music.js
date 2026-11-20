@@ -106,7 +106,7 @@ const Music = {
     const h = g.heat();
     this.level = h >= 26 ? 2 : h >= 10 ? 1 : 0;
     this.power = g.weapon !== 'cannon';
-    this.tempo = 1 + Math.min(0.1, h * 0.002);
+    this.tempo = 1 + Math.min(0.15, h * 0.002);
     this.play(song);
   },
   calm(song) { this.level = 0; this.power = false; this.tempo = 1; this.held = false; this.play(song); },

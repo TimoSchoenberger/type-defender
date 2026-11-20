@@ -235,8 +235,10 @@ const M = {
       : `<button type="button" class="mn-tool" data-room="board"${dis}>🏆 Bestenliste</button>${r.admin ? `<button type="button" class="mn-tool" data-room="sets"${dis}>⌨ Tasten festlegen</button>` : ''}` +
         `<button type="button" class="mn-tool" data-room="rename"${dis}>Anderer Name</button><button type="button" class="mn-tool" data-room="leave"${dis}>Verlassen</button>`;
     const n = r.sets ? r.sets.length : 0, rule = n ? ` Der Raum gibt ${n === 1 ? 'eine Tastenauswahl' : n + ' Tastenauswahlen'} vor.` : '';
+    // Only the creator needs to know when an unused room would be deleted.
+    const until = r.admin && r.expires ? ` Er bleibt bis ${new Date(r.expires).toLocaleDateString('de-DE')} und verlängert sich, sobald jemand im Raum spielt.` : '';
     el.innerHTML = `<div class="mn-room-who"><span class="mn-pace-label">Raum <b class="mn-code">${esc(r.code)}</b></span><span class="mn-room-name">${esc(this.label(r.nick))}</span>` +
-      `<p class="mn-pace-desc">So heißt du in diesem Raum.${r.admin ? ' Du hast ihn erstellt.' : ''}${rule}</p></div><div class="mn-room-act">${acts}</div>${msg}`;
+      `<p class="mn-pace-desc">So heißt du in diesem Raum.${r.admin ? ' Du hast ihn erstellt.' + until : ''}${rule}</p></div><div class="mn-room-act">${acts}</div>${msg}`;
   },
   focusRoom(act) { const b = $('m-room').querySelector(`[data-room="${act}"]`) || $('m-room').querySelector('[data-room]'); if (b) b.focus(); },
   async roomClick(e) {

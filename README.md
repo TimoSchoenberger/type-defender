@@ -13,8 +13,8 @@ No account, no ads, no tracking. Works in any modern browser, can be installed a
 - Pick a style, a tempo and a key set (presets follow the German home-row progression, or build your own on the on-screen keyboard).
 - The first key locks the cannon onto the lowest bomb that starts with it. Backspace lets go.
 - A wrong key jams the cannon for a moment. Twelve correct keys in a row earn a power-up: laser, shield or multishot.
-- The run ends when the first bomb hits the city.
-- Every tempo starts at the same speed and tops out at the same speed. Slower tempos take more hits to get there, so younger kids and fast adults can play the same game.
+- The run ends when the first bomb hits the city. Esc pauses; Enter continues after a 3-2-1 countdown.
+- The game never stops getting harder: every few hits a new stage (*Stufe*) begins, with faster and more bombs and longer words. Every tempo starts at the same speed and climbs the same ramp. Slower tempos take more hits per stage, so younger kids and fast adults can play the same game.
 - **Class and family rooms:** create a room, share its code (such as `TIGER-482`) and compare records on a shared leaderboard. Everyone gets a generated nickname, so nobody has to type a name. A teacher can prescribe which key sets everyone in the room practises.
 
 There are six styles (Neon, Pixel, Doodle, Paper, Comic, Deep Sea), each with its own art, sounds and live-synthesised music. You can switch styles at any time, even mid-game.
@@ -32,7 +32,7 @@ The installed app starts full screen and works without an internet connection.
 
 - Custom key sets and personal records are stored in the browser (IndexedDB). There are no cookies, no ads and no third-party trackers, and fonts are bundled with the app.
 - The game counts visits anonymously: one count per device and day, plus one per finished run. Only the daily totals are stored, with nothing about who played.
-- Class and family rooms store generated nicknames and scores, and only for players who join a room. Rooms that stay idle for 90 days are deleted. [server/README.md](server/README.md) has the details.
+- Class and family rooms store generated nicknames and scores, and only for players who join a room. Rooms nobody opens or plays in for 90 days are deleted. [server/README.md](server/README.md) has the details.
 - The site is hosted on GitHub Pages and the server runs on Cloudflare Workers. Both receive the usual request data, such as IP addresses, when the game loads or talks to the server. See the [GitHub](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) and [Cloudflare](https://www.cloudflare.com/privacypolicy/) privacy policies.
 
 ## Development
@@ -51,7 +51,7 @@ Any static file server works. Pushing to `main` publishes the site through GitHu
 | `index.html` | The page: top bar, style picker, start menu and key editor markup, game canvas. |
 | `css/app.css` | App shell and style picker. |
 | `css/menu.css` | Start menu and key editor. One layout; each style's look is a set of CSS tokens under `.mn[data-look=…]`. |
-| `js/engine.js` | Game rules, timing, input, power-ups and the shared HUD, drawn on a logical 960×600 stage. Difficulty ramps read `heat()` = hits × tempo factor (`PACE`). |
+| `js/engine.js` | Game rules, timing, input, power-ups and the shared HUD, drawn on a logical 960×600 stage. Difficulty ramps read `heat()` = hits × tempo factor (`PACE`); past `RAMP` they keep rising without a cap. |
 | `js/s-*.js` | The six art styles: drawing code, sounds and song for each. |
 | `js/music.js` | Step sequencer that synthesises each style's song live. It gets busier as a run heats up and adds a layer during power-ups. |
 | `js/keys.js` | QWERTZ and QWERTY layouts, preset key sets, the German word list, and the code that turns a key selection into letters, syllables and words. |
