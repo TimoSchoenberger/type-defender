@@ -213,24 +213,33 @@ if ((document.fullscreenEnabled || document.webkitFullscreenEnabled) && !install
     if (fullEl()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
     else Promise.resolve((root.requestFullscreen || root.webkitRequestFullscreen).call(root, { navigationUI: 'hide' })).then(() => navigator.keyboard?.lock?.(['Escape'])).catch(() => {});
   });
-  const changed = () => { fullBtn.textContent = fullEl() ? 'Vollbild aus' : 'Vollbild'; if (fullEl()) guard(); refocus(); };
+  const changed = () => { fullBtn.textContent = fullEl() ? 'Vollbild aus' : 'Vollbild'; if (fullEl()) arm(); refocus(); };
   document.addEventListener('fullscreenchange', changed);
   document.addEventListener('webkitfullscreenchange', changed);
 }
 
 // Android treats Esc on a hardware keyboard as Back, and Back closes an installed app that has no history.
-// So the installed app (and full screen) keeps one spare history entry: Back lands on it and counts as Esc.
-let escAt = 0;
-function guard() { if (!history.state || !history.state.td) history.pushState({ td: 1 }, ''); }
-window.addEventListener('popstate', () => {
-  if (!installed && !fullEl()) return;
-  guard();
-  if (performance.now() - escAt > 250) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); // Back without a key press
-});
-if (installed) guard();
+// So the installed app (and full screen) catches Back and treats it as Esc. Chrome ignores watchers and history
+// entries a page adds without a tap or key (and Esc itself does not count), so they are re-armed on the next real input.
+// A CloseWatcher catches Back where it exists, and a spare history entry catches it where not. One press may reach the page
+// twice (keydown and then Back, or the other way round), so presses closer than 250 ms count once.
+let escAt = 0, watcher = null, armed = false, fromBack = false;
+const guarded = () => installed || !!fullEl();
+function escOnce() { const now = performance.now(), ok = now - escAt > 250; escAt = now; return ok; }
+function backPressed() { if (escOnce()) { fromBack = true; window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); fromBack = false; } }
+function arm() {
+  if (!guarded()) return;
+  if (window.CloseWatcher && !watcher) {
+    try { watcher = new CloseWatcher(); watcher.onclose = () => { watcher = null; backPressed(); arm(); }; } catch (err) { watcher = null; }
+  }
+  if (!armed) { history.pushState({ td: 1 }, ''); armed = true; }
+}
+window.addEventListener('popstate', () => { if (!guarded()) return; armed = false; backPressed(); arm(); });
+for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, e => { if (e.key !== 'Escape') arm(); }, { capture: true, passive: true });
+arm();
 
 window.addEventListener('keydown', e => {
-  if (e.key === 'Escape') escAt = performance.now();
+  if (e.key === 'Escape' && !fromBack && !escOnce()) { e.preventDefault(); return; } // already handled as Back
   if (e.getModifierState) caps = e.getModifierState('CapsLock');
   if (mode === 'pick') { pickKey(e); paint(); return; }
   if (mode === 'menu') { if (Menu.keydown(e) === 'close') showPick(); paint(); return; }
