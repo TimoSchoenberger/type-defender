@@ -1,7 +1,7 @@
 /* Styles 3 + 4: Notebook Doodle, Paper Craft */
 (() => {
 'use strict';
-const { W, H, GROUND, IMPACT, CANNON, BARREL, DOME, util: { rand, pick, lerp, rng }, rr, star, skyline, seg } = TD;
+const { W, H, GROUND, IMPACT, CANNON, BARREL, DOME, util: { rand, pick, lerp, rng }, rr, star, skyline, seg, arrowPath } = TD;
 
 /* ---------------- 3 · Notebook Doodle ---------------- */
 const D = { paper: '#fbfaf4', rule: 'rgba(96,150,214,.32)', margin: 'rgba(226,84,84,.5)', pencil: '#2d2f36', red: '#e0322b',
@@ -173,6 +173,12 @@ TD.styles.push({
   },
   drawLabel(c, b) {
     seg(c, b.text, b.typed, b.x, b.y - b.kick * 6 + 2, { font: this.font, rest: D.pencil, done: D.green, next: D.red, under: D.red, ul: 14 });
+  },
+  drawShift(c, x, y, b, g) { // scribbled with the red pen, boiling like every other line
+    const r = rng(b.id * 17 + boil(g) * 3);
+    c.strokeStyle = D.red; c.lineWidth = 2.2; c.lineCap = 'round'; c.beginPath();
+    wob(c, r, x, y + 6, x, y - 6, 1); wob(c, r, x - 5.5, y - 0.5, x, y - 6.5, 0.8); wob(c, r, x + 5.5, y - 0.5, x, y - 6.5, 0.8);
+    c.stroke();
   },
   drawReticle(c, b, g, locked) { // the teacher's red pen circles the target
     const r = rng(b.id * 31 + boil(g) * 13), y = b.y - b.kick * 6;
@@ -370,6 +376,13 @@ TD.styles.push({
     c.save(); c.translate(b.x, b.y - b.kick * 5); c.rotate(tilt(b));
     seg(c, b.text, b.typed, 0, 1, { font: this.font, rest: PA.white, done: 'rgba(255,253,248,.38)', next: PA.yellow, under: PA.yellow, ul: 14 });
     c.restore();
+  },
+  drawShift(c, x, y, b) { // a cut-out paper arrow, tilting with its bomb
+    const cx = b.x, cy = b.y - b.kick * 5;
+    c.translate(cx, cy); c.rotate(tilt(b));
+    shade(c, 3, 1.5, 0.3); c.fillStyle = PA.yellow; c.lineJoin = 'round';
+    arrowPath(c, x - cx, y - cy, 6.5); c.fill();
+    noShade(c);
   },
   drawReticle(c, b, g, locked) {
     const rx = b.w / 2 + 14, ry = b.h / 2 + 14;

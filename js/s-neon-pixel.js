@@ -1,7 +1,7 @@
 /* Styles 1 + 2: Neon Pulse, Pixel Arcade */
 (() => {
 'use strict';
-const { W, H, GROUND, IMPACT, CANNON, BARREL, DOME, domeY, util: { rand, pick, lerp, rng }, skyline, seg } = TD;
+const { W, H, GROUND, IMPACT, CANNON, BARREL, DOME, domeY, util: { rand, pick, lerp, rng }, skyline, seg, arrowPath } = TD;
 
 /* ---------------- 1 · Neon Pulse ---------------- */
 const N = { bg0: '#07041a', bg1: '#1b0838', cyan: '#29f0ff', pink: '#ff3df2', yellow: '#ffe14d', violet: '#7c5cff', red: '#ff4d6d', ink: '#100828' };
@@ -126,6 +126,11 @@ TD.styles.push({
     c.save(); c.shadowColor = 'rgba(255,255,255,.55)'; c.shadowBlur = (6) * TD.k;
     seg(c, b.text, b.typed, b.x, b.y - b.kick * 6 + 1, { font: this.font, rest: '#fff', done: 'rgba(255,255,255,.28)', next: N.yellow, under: N.yellow, ul: 15 });
     c.restore();
+  },
+  drawShift(c, x, y) { // a little neon tube in the shape of the shift key
+    c.shadowColor = N.yellow; c.shadowBlur = 8 * TD.k;
+    c.strokeStyle = N.yellow; c.lineWidth = 2; c.lineJoin = 'round';
+    arrowPath(c, x, y, 6.5); c.stroke();
   },
   drawReticle(c, b, g, locked) {
     const y = b.y - b.kick * 6, rw = b.w / 2 + 12, rh = b.h / 2 + 10, k = 14, br = locked ? 0 : 5 + 3 * Math.sin(g.t * 5);
@@ -327,6 +332,11 @@ TD.styles.push({
   },
   drawLabel(c, b) {
     seg(c, b.text, b.typed, Q(b.x) * P, Q(b.y - b.kick * 6) * P + 1, { font: this.font, rest: '#fff', done: '#7d76a8', next: X.win, under: X.win, ul: 13 });
+  },
+  drawShift(c, x, y) { // a tiny sprite, snapped to a 2 px grid so its edges stay crisp
+    const ART = ['...#...', '..###..', '.#####.', '#######', '..###..', '..###..'], u = 2;
+    const x0 = Math.round(x / u) * u - 3 * u, y0 = Math.round(y / u) * u - 4 * u;
+    ART.forEach((row, j) => [...row].forEach((p, i) => { if (p === '#') fill(c, x0 + i * u, y0 + j * u, u, u, X.win); }));
   },
   drawReticle(c, b, g, locked) {
     const S = v => Math.round(v / P) * P, cx = S(b.x), cy = S(b.y - b.kick * 6), rw = S(b.w / 2 + 12), rh = S(b.h / 2 + 10);

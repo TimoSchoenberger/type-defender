@@ -1,7 +1,7 @@
 /* Styles 5 + 6: Comic Pop, Deep Sea */
 (() => {
 'use strict';
-const { W, H, GROUND, IMPACT, CANNON, BARREL, DOME, domeY, util: { rand, pick, lerp, rng }, rr, star, skyline, seg } = TD;
+const { W, H, GROUND, IMPACT, CANNON, BARREL, DOME, domeY, util: { rand, pick, lerp, rng }, rr, star, skyline, seg, arrowPath } = TD;
 
 /* ---------------- 5 · Comic Pop ---------------- */
 const C = { sky0: '#47c3ff', sky1: '#b5ecff', ink: '#111111', yellow: '#ffd400', red: '#ff3b3b', blue: '#3a86ff', purple: '#8e7dff', street: '#5b6470' };
@@ -112,6 +112,10 @@ TD.styles.push({
     c.restore();
   },
   labelY(b) { return b.y - b.kick * 6 + BUBBLE_DY; }, // where the text sits (the engine puts the capital mark next to it)
+  drawShift(c, x, y) { // inked like everything else: black outline, flat red
+    c.lineJoin = 'round'; c.lineWidth = 3.5; c.strokeStyle = C.ink; c.fillStyle = C.red;
+    arrowPath(c, x + 1, y, 6.5); c.stroke(); c.fill();
+  },
   drawLabel(c, b, g) { // every bomb shouts its word in a speech bubble
     const y = b.y - b.kick * 6, bw = Math.max(46, b.tw + 30), bh = 40, by = y + BUBBLE_DY, locked = b === g.target;
     c.save(); c.lineJoin = 'round';
@@ -308,6 +312,11 @@ TD.styles.push({
     c.restore();
   },
   labelY: bob,
+  drawShift(c, x, y) { // a soft glowing chevron, like the sonar and the bubbles
+    c.shadowColor = S.lime; c.shadowBlur = 6 * TD.k;
+    c.strokeStyle = S.lime; c.lineWidth = 2.6; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath(); c.moveTo(x - 5, y + 0.5); c.lineTo(x, y - 5.5); c.lineTo(x + 5, y + 0.5); c.moveTo(x, y - 5); c.lineTo(x, y + 6); c.stroke();
+  },
   drawLabel(c, b) {
     seg(c, b.text, b.typed, b.x, bob(b) + 2, { font: this.font, rest: S.white, done: 'rgba(95,242,214,.5)', next: S.lime, under: S.lime, ul: 14 });
   },

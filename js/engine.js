@@ -306,16 +306,19 @@ function raceOver(c, g, o) {
   if (g.overT > 0.6) { c.globalAlpha = a * (0.6 + 0.4 * Math.sin(g.t * 5)); T(v.done ? 'Enter: zur Lobby · Esc: Menü' : 'Warte, bis alle raus sind … · Esc: Menü', 20, 540, o.color); }
   c.restore();
 }
-// Single capital letters look like their small form in many fonts (C c, O o, S s, I l), so they get a small ⇧ arrow.
-// y is the middle of the bomb's text (styles that draw it elsewhere say so with labelY).
-function shiftMark(c, b, col, y0) {
-  if (b.text.length !== 1 || b.text === b.text.toLowerCase() || b.doomed) return;
-  const x = b.x + (b.tw || 20) / 2 + 9, y = y0 - 12, s = 6;
-  c.save(); c.fillStyle = col;
+// Single capital letters look like their small form in many fonts (C c, O o, S s, I l), so they get a small ⇧ arrow
+// up and to the right of the letter. Styles draw it in their own look (drawShift); arrowPath is the shared outline.
+function arrowPath(c, x, y, s = 6) {
   c.beginPath();
   c.moveTo(x, y - s); c.lineTo(x + s, y); c.lineTo(x + s / 2.4, y); c.lineTo(x + s / 2.4, y + s * 0.9);
   c.lineTo(x - s / 2.4, y + s * 0.9); c.lineTo(x - s / 2.4, y); c.lineTo(x - s, y); c.closePath();
-  c.fill(); c.restore();
+}
+function shiftMark(c, b, g) {
+  if (b.text.length !== 1 || b.text === b.text.toLowerCase() || b.doomed) return;
+  const s = g.style, y0 = s.labelY ? s.labelY(b) : b.y - b.kick * 6; // labelY: styles that put the text elsewhere
+  const x = b.x + (b.tw || 20) / 2 + 9, y = y0 - 12;
+  if (s.drawShift) { c.save(); s.drawShift(c, x, y, b, g); c.restore(); return; }
+  c.save(); c.fillStyle = s.hud.accent; arrowPath(c, x, y); c.fill(); c.restore();
 }
 
 const LAYERS = new Map();
@@ -624,7 +627,7 @@ class Game {
     for (const p of this.parts) s.drawParticle(w, p, this);
     if (s.endWorld) s.endWorld(this, c);
     if (this.race && !this.over) racePanel(c, this, s.hud);
-    for (const b of this.bombs) { s.drawLabel(c, b, this); shiftMark(c, b, s.hud.accent, s.labelY ? s.labelY(b) : b.y - b.kick * 6); }
+    for (const b of this.bombs) { s.drawLabel(c, b, this); shiftMark(c, b, this); }
     const tb = this.target || this.hint;
     if (tb) s.drawReticle(c, tb, this, tb === this.target);
     for (const x of this.texts) s.drawText ? s.drawText(c, x, this) : ftext(c, x, s.text);
@@ -640,7 +643,7 @@ class Game {
 window.TD = {
   W, H, GROUND, IMPACT, CANNON, BARREL, DOME, STREAK, POWER_T, PACE, POOL, domeY,
   util: { rand, pick, clamp, lerp, rng }, store, Sfx, Game, styles: [],
-  rr, star, skyline, seg, ftext, hud, gauge, over,
+  rr, star, skyline, seg, ftext, hud, gauge, over, arrowPath,
   clearLayers: () => LAYERS.clear()
 };
 })();
