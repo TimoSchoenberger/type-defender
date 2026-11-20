@@ -333,9 +333,9 @@ TD.styles.push({
   drawLabel(c, b) {
     seg(c, b.text, b.typed, Q(b.x) * P, Q(b.y - b.kick * 6) * P + 1, { font: this.font, rest: '#fff', done: '#7d76a8', next: X.win, under: X.win, ul: 13 });
   },
-  drawShift(c, x, y) { // a tiny sprite, snapped to a 2 px grid so its edges stay crisp
+  drawShift(c, x, y, b) { // a tiny sprite, fixed to the bomb's snapped position (like the label) so they move as one
     const ART = ['...#...', '..###..', '.#####.', '#######', '..###..', '..###..'], u = 2;
-    const x0 = Math.round(x / u) * u - 3 * u, y0 = Math.round(y / u) * u - 4 * u;
+    const x0 = Q(b.x) * P + Math.round(((b.tw || 20) / 2 + 9) / u) * u - 3 * u, y0 = Q(b.y - b.kick * 6) * P - 12 - 4 * u;
     ART.forEach((row, j) => [...row].forEach((p, i) => { if (p === '#') fill(c, x0 + i * u, y0 + j * u, u, u, X.win); }));
   },
   drawReticle(c, b, g, locked) {
