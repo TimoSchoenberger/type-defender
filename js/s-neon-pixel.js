@@ -271,7 +271,7 @@ TD.styles.push({
     over: [{ f: 440, f2: 55, d: 1, v: 0.08 }, { noise: 1, f: 900, f2: 80, d: 0.7, v: 0.1 }]
   },
   // The buffer reaches TOP pixels above the world, so on a tall screen bombs come in through the sky instead of appearing at its edge.
-  worldTop: TOP * P,
+  worldTop: TOP * P, worldScale: 1 / P,
   beginWorld() {
     if (!buf) { buf = document.createElement('canvas'); buf.width = PW; buf.height = PH + TOP; bctx = buf.getContext('2d'); }
     bctx.setTransform(1, 0, 0, 1, 0, 0); bctx.clearRect(0, 0, PW, TOP); bctx.translate(0, TOP);

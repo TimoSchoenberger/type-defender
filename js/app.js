@@ -7,7 +7,7 @@ const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = id => document.getElementById(id);
 
 const appEl = $('app'), arenaCanvas = $('arena-canvas'), pickEl = $('pick');
-const styleBtn = $('to-style'), soundBtn = $('sound'), musicBtn = $('music'), menuBtn = $('to-menu'), fullBtn = $('full');
+const styleBtn = $('to-style'), soundBtn = $('sound'), musicBtn = $('music'), splashBtn = $('splash'), menuBtn = $('to-menu'), fullBtn = $('full');
 const helpEl = $('help'), capsEl = $('capswarn');
 // mode is what the stage shows; back is where the picker returns to (null before the first pick).
 // racing names the race this device is playing (seed and start), null otherwise.
@@ -17,6 +17,7 @@ const saved = byId[store.get('td-style', '')];
 const arena = new Game(arenaCanvas, saved || byId.comic, 'play');
 arena.onMenu = true;
 arena.fill = true;
+arena.splash = store.get('td-splash', true);
 
 // Renders outside the animation loop get the same guard: one bad frame must not break the page.
 function safeRender(g) { try { g.render(); } catch (err) { console.error(err); } }
@@ -64,6 +65,7 @@ ro.observe(arenaCanvas);
 function paintSound() {
   soundBtn.textContent = Sfx.enabled ? 'Ton: an' : 'Ton: aus'; soundBtn.setAttribute('aria-pressed', String(Sfx.enabled));
   musicBtn.textContent = Music.enabled ? 'Musik: an' : 'Musik: aus'; musicBtn.setAttribute('aria-pressed', String(Music.enabled));
+  splashBtn.textContent = arena.splash ? 'Stufen: an' : 'Stufen: aus'; splashBtn.setAttribute('aria-pressed', String(arena.splash));
 }
 const HELP = {
   pick: 'Klick auf einen Stil oder drück 1 bis 6 · Pfeiltasten: wählen · Enter: los',
@@ -195,6 +197,7 @@ styleBtn.addEventListener('click', showPick);
 menuBtn.addEventListener('click', () => showMenu());
 soundBtn.addEventListener('click', () => { Sfx.enabled = !Sfx.enabled; store.set('td-sound', Sfx.enabled); if (Sfx.enabled) Sfx.unlock(); paintSound(); refocus(); });
 musicBtn.addEventListener('click', () => { Music.setEnabled(!Music.enabled); Sfx.unlock(); paintSound(); refocus(); });
+splashBtn.addEventListener('click', () => { arena.splash = !arena.splash; store.set('td-splash', arena.splash); paintSound(); refocus(); });
 arenaCanvas.addEventListener('pointerdown', () => { appEl.focus(); if (arena.paused) { arena.resume(); paint(); } });
 function refocus() { if (mode === 'game') appEl.focus(); }
 
@@ -208,14 +211,26 @@ if ((document.fullscreenEnabled || document.webkitFullscreenEnabled) && !install
   fullBtn.hidden = false;
   fullBtn.addEventListener('click', () => {
     if (fullEl()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-    else Promise.resolve((root.requestFullscreen || root.webkitRequestFullscreen).call(root, { navigationUI: 'hide' })).catch(() => {});
+    else Promise.resolve((root.requestFullscreen || root.webkitRequestFullscreen).call(root, { navigationUI: 'hide' })).then(() => navigator.keyboard?.lock?.(['Escape'])).catch(() => {});
   });
-  const changed = () => { fullBtn.textContent = fullEl() ? 'Vollbild aus' : 'Vollbild'; refocus(); };
+  const changed = () => { fullBtn.textContent = fullEl() ? 'Vollbild aus' : 'Vollbild'; if (fullEl()) guard(); refocus(); };
   document.addEventListener('fullscreenchange', changed);
   document.addEventListener('webkitfullscreenchange', changed);
 }
 
+// Android treats Esc on a hardware keyboard as Back, and Back closes an installed app that has no history.
+// So the installed app (and full screen) keeps one spare history entry: Back lands on it and counts as Esc.
+let escAt = 0;
+function guard() { if (!history.state || !history.state.td) history.pushState({ td: 1 }, ''); }
+window.addEventListener('popstate', () => {
+  if (!installed && !fullEl()) return;
+  guard();
+  if (performance.now() - escAt > 250) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); // Back without a key press
+});
+if (installed) guard();
+
 window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') escAt = performance.now();
   if (e.getModifierState) caps = e.getModifierState('CapsLock');
   if (mode === 'pick') { pickKey(e); paint(); return; }
   if (mode === 'menu') { if (Menu.keydown(e) === 'close') showPick(); paint(); return; }

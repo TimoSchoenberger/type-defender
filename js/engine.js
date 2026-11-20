@@ -18,6 +18,7 @@ const PACE = [0.25, 0.4, 0.55, 0.75, 1];
 // after that bombs keep getting faster and denser, slowly but without a cap.
 const RAMP = 50;
 const STAGE = 6;     // heat per stage ("Stufe"), shown in the HUD
+const SPLASH = 2.4;  // seconds the big stage number stays in the background
 const COUNT = 0.75;  // seconds per step of the 3-2-1 countdown after a pause
 const RACE_SEC = 2.5; // in a race, difficulty follows the clock: one unit of heat per this many seconds (at full pace)
 
@@ -310,6 +311,20 @@ function raceOver(c, g, o) {
 }
 // Single capital letters look like their small form in many fonts (C c, O o, S s, I l), so they get a small ⇧ arrow
 // up and to the right of the letter. Styles draw it in their own look (drawShift); arrowPath is the shared outline.
+// A new stage: a big, faint number behind the bombs that grows in and fades away, with one ring rolling outwards.
+// Styles that draw the world into a smaller buffer give its scale as worldScale, so the splash gets their pixels too.
+function stageSplash(c, g) {
+  const s = g.style, t = g.splashT, a = Math.min(1, t / 0.15) * clamp((SPLASH - t) / 1.2, 0, 1), k = s.worldScale || 1;
+  const f = n => s.text.font.replace('{s}', n), sc = 1 + 0.25 * Math.max(0, 1 - t / 0.4) ** 2;
+  c.save(); c.scale(k, k); c.translate(W / 2, 250);
+  c.globalAlpha = a * 0.7 * clamp(1 - t / 1.4, 0, 1); c.strokeStyle = s.hud.accent; c.lineWidth = 10 * (1 - t / SPLASH) + 2;
+  c.beginPath(); c.arc(0, 0, 60 + t * 260, 0, 6.283); c.stroke();
+  c.scale(sc, sc); c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
+  c.globalAlpha = a * 0.42;
+  const T = (txt, size, y) => { c.font = f(size); if (s.text.stroke) { c.lineWidth = (s.text.lw || 6) * 1.6; c.strokeStyle = s.text.stroke; c.strokeText(txt, 0, y); } c.fillStyle = s.hud.accent; c.fillText(txt, 0, y); };
+  T('STUFE', 44, -96); T(String(g.splashN), 200, 20);
+  c.restore();
+}
 function arrowPath(c, x, y, s = 6) {
   c.beginPath();
   c.moveTo(x, y - s); c.lineTo(x + s, y); c.lineTo(x + s / 2.4, y); c.lineTo(x + s / 2.4, y + s * 0.9);
@@ -333,6 +348,7 @@ class Game {
     this.best = mode === 'play' ? store.get('td-best', 0) : 0;
     this.onOver = null;  // called with the game when a play-mode run ends
     this.edges = {}; this.fill = false;
+    this.splash = false; // a big stage number in the background on each new stage, instead of the small floating one
     this.resize(); this.reset();
   }
   setStyle(style) { this.style = style; for (const b of this.bombs) this.measure(b); }
@@ -342,7 +358,7 @@ class Game {
       target: null, hint: null, score: 0, combo: 0, kills: 0, hits: 0, errors: 0,
       jam: 0, recoil: 0, shake: 0, flash: 0, angle: -Math.PI / 2,
       weapon: 'cannon', weaponT: 0, powerIdx: 0, shield: false, shieldVis: 0, shieldT: 0,
-      letThrough: null, over: false, overT: 0, roomLine: '', paused: false, countT: 0, stageSeen: 1, won: false, spawned: 0, spawnT: 0.6, aiT: 0.8, nid: 1
+      letThrough: null, over: false, overT: 0, roomLine: '', paused: false, countT: 0, stageSeen: 1, splashT: SPLASH, splashN: 1, won: false, spawned: 0, spawnT: 0.6, aiT: 0.8, nid: 1
     });
     if (this.mode === 'auto') for (const y of [80, 190, 290, 380]) { const b = this.spawn(); if (b) b.y = y; }
   }
@@ -574,7 +590,11 @@ class Game {
     }
     this.t += dt;
     const s = this.style, n = this.stage();
-    if (this.mode === 'play' && n > this.stageSeen && !this.over) { this.stageSeen = n; this.say(`Stufe ${n}`, W / 2, 200, { size: 34, life: 1.2, vy: -14, kind: 'power' }); this.sfx('stage'); }
+    if (this.mode === 'play' && n > this.stageSeen && !this.over) {
+      this.stageSeen = n; this.sfx('stage');
+      if (this.splash) { this.splashT = 0; this.splashN = n; } else this.say(`Stufe ${n}`, W / 2, 200, { size: 34, life: 1.2, vy: -14, kind: 'power' });
+    }
+    if (this.splashT < SPLASH) this.splashT += dt;
     this.shake = Math.max(0, this.shake - dt * 30);
     this.flash = Math.max(0, this.flash - dt * 2);
     this.recoil = Math.max(0, this.recoil - dt * 6);
@@ -636,6 +656,7 @@ class Game {
     s.drawBackground(w, this);
     s.drawCity(w, this);
     this.bands();
+    if (this.splashT < SPLASH) stageSplash(w, this);
     if (this.shieldVis > 0.02) s.drawShield(w, this);
     for (const b of this.bombs) s.drawBomb(w, b, this);
     for (const l of this.lasers) s.drawLaser(w, l, this);

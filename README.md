@@ -14,7 +14,7 @@ No account, no ads, no tracking. Works in any modern browser, can be installed a
 - The first key locks the cannon onto the lowest bomb that starts with it. Backspace lets go.
 - A wrong key jams the cannon for a moment. Twelve correct keys in a row earn a power-up: laser, shield or multishot.
 - The run ends when the first bomb hits the city. Esc pauses; Enter continues after a 3-2-1 countdown.
-- The game never stops getting harder: every few hits a new stage (*Stufe*) begins, with faster and more bombs and longer words. Every tempo starts at the same speed and climbs the same ramp. Slower tempos take more hits per stage, so younger kids and fast adults can play the same game.
+- The game never stops getting harder: every few hits a new stage (*Stufe*) begins, with faster and more bombs and longer words. Each new stage shows its number big in the background; the *Stufen* button turns that off for players it distracts. Every tempo starts at the same speed and climbs the same ramp. Slower tempos take more hits per stage, so younger kids and fast adults can play the same game.
 - **Class and family rooms:** create a room, share its code (such as `TIGER-482`) and compare records on a shared leaderboard. Everyone gets a generated nickname, so nobody has to type a name. A teacher can prescribe which key sets everyone in the room practises.
 - **Races (last one standing):** in a room, everyone opens *Wettrennen*, the room's creator picks the keys and starts. All devices get the same bombs and the same rising difficulty; a list shows who is still in and who is out after how long. The last one left wins.
 - A single capital letter gets a small ⇧ arrow, so C and c, O and o or I and l can be told apart.
@@ -28,7 +28,7 @@ A physical keyboard is needed. On tablets a Bluetooth keyboard works. Both Germa
 - **Chrome, Edge (Windows, macOS, Linux, Chromebook):** open the game and click the install icon in the address bar.
 - **Safari on iPad / Mac:** Share → *Add to Home Screen* (iPad) or File → *Add to Dock* (Mac).
 
-The installed app starts full screen and works without an internet connection. While a game runs, the playing field fills the whole screen; the buttons and help line only come back during a pause or after the game. On screens taller than 16:10 (such as a 4:3 iPad), the sky and ground stretch to the edges.
+The installed app starts full screen and works without an internet connection. On Android, Esc on a hardware keyboard counts as the Back key; the game catches it, so Esc (or a Back gesture) pauses instead of closing the app. While a game runs, the playing field fills the whole screen; the buttons and help line only come back during a pause or after the game. On screens taller than 16:10 (such as a 4:3 iPad), the sky and ground stretch to the edges.
 
 ## Privacy
 
