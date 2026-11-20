@@ -156,6 +156,8 @@ function ftext(c, x, o) {
   c.restore();
 }
 // Shared HUD: score (left), streak meter (centre), active power-ups (right).
+// Fill the whole canvas, including the bands above and below the world.
+function cover(c, g) { c.fillRect(0, -g.oy / g.k, W, g.ch / g.k); }
 function hud(c, g, o) {
   const f = s => o.font.replace('{s}', s);
   c.save(); c.textBaseline = 'middle'; c.textAlign = 'left';
@@ -212,7 +214,7 @@ function gauge(c, g, o = {}) {
 function over(c, g, o) {
   const a = clamp(g.overT * 2.5, 0, 1), f = s => o.font.replace('{s}', s);
   const acc = g.hits + g.errors ? Math.round((100 * g.hits) / (g.hits + g.errors)) : 100;
-  c.save(); c.globalAlpha = a; c.fillStyle = o.dim; c.fillRect(0, 0, W, H);
+  c.save(); c.globalAlpha = a; c.fillStyle = o.dim; cover(c, g);
   c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
   const T = (txt, size, y, col) => {
     c.font = f(size);
@@ -232,7 +234,7 @@ function over(c, g, o) {
 // Pause: the run stays frozen until Enter, then a 3-2-1 countdown gives the hands time to find the keys.
 function pause(c, g, o) {
   const f = s => o.font.replace('{s}', s);
-  c.save(); c.fillStyle = o.dim; c.globalAlpha = g.paused ? 1 : 0.5; c.fillRect(0, 0, W, H); c.globalAlpha = 1;
+  c.save(); c.fillStyle = o.dim; c.globalAlpha = g.paused ? 1 : 0.5; cover(c, g); c.globalAlpha = 1;
   c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
   const T = (txt, size, y, col) => {
     c.font = f(size);
@@ -286,7 +288,7 @@ function racePanel(c, g, o) {
 function raceOver(c, g, o) {
   const v = g.raceView || { rows: [], total: 0, done: false }, a = clamp(g.overT * 2.5, 0, 1), f = s => o.font.replace('{s}', s);
   const me = v.rows.find(r => r.me);
-  c.save(); c.globalAlpha = a; c.fillStyle = o.dim; c.fillRect(0, 0, W, H);
+  c.save(); c.globalAlpha = a; c.fillStyle = o.dim; cover(c, g);
   c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
   const T = (txt, size, y, col) => {
     c.font = f(size);
@@ -330,6 +332,7 @@ class Game {
     this.pace = 1; this.paceName = '';  // set from the menu's tempo slider
     this.best = mode === 'play' ? store.get('td-best', 0) : 0;
     this.onOver = null;  // called with the game when a play-mode run ends
+    this.edges = {}; this.fill = false;
     this.resize(); this.reset();
   }
   setStyle(style) { this.style = style; for (const b of this.bombs) this.measure(b); }
@@ -343,14 +346,17 @@ class Game {
     });
     if (this.mode === 'auto') for (const y of [80, 190, 290, 380]) { const b = this.spawn(); if (b) b.y = y; }
   }
+  // With fill set, a canvas taller than the 16:10 world gets sky above and ground below it (see bands), so a 4:3 tablet is used to the edge.
   resize() {
     const r = this.canvas.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
-    const cw = Math.max(96, Math.round((r.width || 480) * dpr)), ch = Math.round((cw * H) / W);
+    const cw = Math.max(96, Math.round((r.width || 480) * dpr)), wh = Math.round((cw * H) / W);
+    const ch = this.fill && r.height ? Math.max(wh, Math.round(r.height * dpr)) : wh;
     if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
-    this.cw = cw; this.ch = ch; this.k = cw / W;
+    this.cw = cw; this.ch = ch; this.wh = wh; this.k = cw / W;
+    this.oy = Math.round((ch - wh) * 0.6); // device pixels above the world; more room above than below
   }
   // Static art cached per style and resolution.
-  layer(name, draw, pw = this.cw, ph = this.ch, k = this.k) {
+  layer(name, draw, pw = this.cw, ph = Math.round((pw * H) / W), k = this.k) {
     const key = `${this.style.id}:${name}:${pw}`;
     let c = LAYERS.get(key);
     if (!c) {
@@ -358,7 +364,18 @@ class Game {
       const x = c.getContext('2d'); x.setTransform(k, 0, 0, k, 0, 0);
       draw(x, this); LAYERS.set(key, c);
     }
+    if (name === 'bg' || name.startsWith('city')) this.edges[name === 'bg' ? 'bg' : 'city'] = c;
     return c;
+  }
+  // Fill the room above and below the world by stretching the edge rows of the static sky and city art,
+  // so moving things (clouds, stars, bombs) never smear into it.
+  bands() {
+    const c = this.ctx, { bg, city } = this.edges, low = this.oy + this.wh, pad = this.shake > 0 ? Math.ceil(this.shake * this.k) + 1 : 0;
+    if (this.ch === this.wh || !bg) return;
+    c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.imageSmoothingEnabled = false;
+    if (this.oy) c.drawImage(bg, 0, 0, bg.width, 1, 0, 0, this.cw, this.oy + pad);
+    for (const img of [bg, city]) if (img && low < this.ch) c.drawImage(img, 0, img.height - 1, img.width, 1, 0, low - pad, this.cw, this.ch - low + pad);
+    c.restore();
   }
   measure(b) {
     const s = this.style, c = this.ctx;
@@ -612,12 +629,13 @@ class Game {
   render() {
     const c = this.ctx, s = this.style;
     TD.k = this.k; // shadows ignore the canvas transform, so styles scale them by this
-    c.setTransform(this.k, 0, 0, this.k, 0, 0);
+    c.setTransform(this.k, 0, 0, this.k, 0, this.oy);
     c.save();
     if (this.shake > 0) c.translate(rand(-1, 1) * this.shake, rand(-1, 1) * this.shake);
     const w = s.beginWorld ? s.beginWorld(this) : c;
     s.drawBackground(w, this);
     s.drawCity(w, this);
+    this.bands();
     if (this.shieldVis > 0.02) s.drawShield(w, this);
     for (const b of this.bombs) s.drawBomb(w, b, this);
     for (const l of this.lasers) s.drawLaser(w, l, this);
@@ -626,14 +644,17 @@ class Game {
     if (this.weapon !== 'cannon') s.drawGauge ? s.drawGauge(w, this) : gauge(w, this, s.gauge);
     for (const p of this.parts) s.drawParticle(w, p, this);
     if (s.endWorld) s.endWorld(this, c);
-    if (this.race && !this.over) racePanel(c, this, s.hud);
+    const up = -this.oy / this.k; // the HUD and race panel sit at the top of the screen, not of the world
+    if (this.race && !this.over) { c.save(); c.translate(0, up); racePanel(c, this, s.hud); c.restore(); }
+    if (s.beginWorld) { const t = s.worldTop || 0; c.save(); c.beginPath(); c.rect(0, -t, W, H + t); c.clip(); } // labels end where the world buffer does
     for (const b of this.bombs) { s.drawLabel(c, b, this); shiftMark(c, b, this); }
+    if (s.beginWorld) c.restore();
     const tb = this.target || this.hint;
     if (tb) s.drawReticle(c, tb, this, tb === this.target);
     for (const x of this.texts) s.drawText ? s.drawText(c, x, this) : ftext(c, x, s.text);
     c.restore();
-    if (this.flash > 0) { c.globalAlpha = this.flash * 0.5; c.fillStyle = s.flashColor || '#fff'; c.fillRect(0, 0, W, H); c.globalAlpha = 1; }
-    s.drawHUD ? s.drawHUD(c, this) : hud(c, this, s.hud);
+    if (this.flash > 0) { c.globalAlpha = this.flash * 0.5; c.fillStyle = s.flashColor || '#fff'; cover(c, this); c.globalAlpha = 1; }
+    c.save(); c.translate(0, up); s.drawHUD ? s.drawHUD(c, this) : hud(c, this, s.hud); c.restore();
     if (this.over) this.race ? raceOver(c, this, s.overOpts) : s.drawOver ? s.drawOver(c, this) : over(c, this, s.overOpts);
     else if (this.frozen) pause(c, this, s.overOpts);
   }

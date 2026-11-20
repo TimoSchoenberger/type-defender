@@ -30,7 +30,18 @@ body { background: #07080c; color: var(--chrome-ink); font: 400 1rem/1.45 var(--
 .bar #to-style:hover { filter: brightness(1.06); }
 
 .stage { position: relative; display: grid; place-items: center; min-height: 0; }
+/* In a game the canvas takes the whole screen (inside the safe areas); the bar and help line float over it when paused or over. */
+#app.in-game { grid-template-rows: minmax(0, 1fr); gap: 0;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+#app.in-game .stage { grid-row: 1; }
+#app.in-game .bar, #app.in-game .help { position: absolute; left: 0; right: 0; z-index: 5; margin: 0;
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px)); background: rgba(7,8,12,.82); }
+#app.in-game .bar { top: 0; padding-top: calc(10px + env(safe-area-inset-top, 0px)); }
+#app.in-game .help { bottom: 0; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+#app.in-game:not(.chrome) .bar, #app.in-game:not(.chrome) .help { display: none; }
+#app.in-game:not(.chrome) #arena-canvas { cursor: none; }
 #arena-canvas { display: block; width: min(100%, calc((100dvh - 150px) * 1.6)); max-width: 100%; aspect-ratio: 16 / 10; border-radius: 10px; }
+#app.in-game #arena-canvas { width: min(100%, calc((100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * 1.6)); height: 100%; aspect-ratio: auto; border-radius: 0; }
 .help { margin: 0; text-align: center; font-size: .9rem; color: var(--chrome-mute); }
 .capswarn { position: absolute; left: 50%; top: 12px; transform: translateX(-50%) rotate(-1deg); margin: 0; z-index: 3; pointer-events: none;
   font: 400 1.3rem/1 Bangers, Impact, sans-serif; letter-spacing: .04em; color: #fff; background: #ff3b3b; border: 3px solid #111; box-shadow: 3px 3px 0 #111; padding: 8px 14px 6px; }

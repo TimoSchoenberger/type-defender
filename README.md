@@ -28,7 +28,7 @@ A physical keyboard is needed. On tablets a Bluetooth keyboard works. Both Germa
 - **Chrome, Edge (Windows, macOS, Linux, Chromebook):** open the game and click the install icon in the address bar.
 - **Safari on iPad / Mac:** Share → *Add to Home Screen* (iPad) or File → *Add to Dock* (Mac).
 
-The installed app starts full screen and works without an internet connection.
+The installed app starts full screen and works without an internet connection. While a game runs, the playing field fills the whole screen; the buttons and help line only come back during a pause or after the game. On screens taller than 16:10 (such as a 4:3 iPad), the sky and ground stretch to the edges.
 
 ## Privacy
 

@@ -204,7 +204,7 @@ TD.styles.push({
 
 /* ---------------- 2 · Pixel Arcade ---------------- */
 // The world is drawn into a 240×150 buffer and scaled up with hard edges; labels and HUD stay sharp on top.
-const P = 4, PW = W / P, PH = H / P, Q = v => Math.round(v / P);
+const P = 4, PW = W / P, PH = H / P, TOP = 16, Q = v => Math.round(v / P);
 const X = { sky0: '#0d0b2a', sky1: '#1d1650', sky2: '#33236d', sky3: '#4e2c80', star: '#fff6d5', moon: '#f4e7b0', crater: '#d6c58c',
   far: '#2a1f5c', bld: '#24204f', edge: '#3a3378', win: '#ffd34e', winOff: '#3d3577', ground: '#2f6b3a', ground2: '#3f8f49',
   bomb: '#211b38', shine: '#6a6488', fuse: '#c28b4a', spark: '#ffef5a', orange: '#ff9a2e', red: '#ff3b3b', cyan: '#57e0ff', grey: '#8a8fa8' };
@@ -270,13 +270,15 @@ TD.styles.push({
     power: [523, 659, 784, 1046].map((f, i) => ({ f, d: 0.07, v: 0.05, at: i * 0.07 })),
     over: [{ f: 440, f2: 55, d: 1, v: 0.08 }, { noise: 1, f: 900, f2: 80, d: 0.7, v: 0.1 }]
   },
+  // The buffer reaches TOP pixels above the world, so on a tall screen bombs come in through the sky instead of appearing at its edge.
+  worldTop: TOP * P,
   beginWorld() {
-    if (!buf) { buf = document.createElement('canvas'); buf.width = PW; buf.height = PH; bctx = buf.getContext('2d'); }
-    bctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (!buf) { buf = document.createElement('canvas'); buf.width = PW; buf.height = PH + TOP; bctx = buf.getContext('2d'); }
+    bctx.setTransform(1, 0, 0, 1, 0, 0); bctx.clearRect(0, 0, PW, TOP); bctx.translate(0, TOP);
     return bctx;
   },
   endWorld(g, c) {
-    c.save(); c.imageSmoothingEnabled = false; c.drawImage(buf, 0, 0, W, H); c.restore();
+    c.save(); c.imageSmoothingEnabled = false; c.drawImage(buf, 0, -TOP * P, W, H + TOP * P); c.restore();
     c.drawImage(g.layer('scan', x => { x.fillStyle = 'rgba(0,0,0,.16)'; for (let y = 2; y < H; y += 4) x.fillRect(0, y, W, 1.5); }), 0, 0, W, H);
   },
   drawBackground(c, g) {

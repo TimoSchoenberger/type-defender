@@ -16,6 +16,7 @@ let mode = 'pick', back = null, caps = false, racing = null;
 const saved = byId[store.get('td-style', '')];
 const arena = new Game(arenaCanvas, saved || byId.comic, 'play');
 arena.onMenu = true;
+arena.fill = true;
 
 // Renders outside the animation loop get the same guard: one bad frame must not break the page.
 function safeRender(g) { try { g.render(); } catch (err) { console.error(err); } }
@@ -75,8 +76,12 @@ const HELP = {
   raceOut: 'Esc: zurück ins Menü',
   raceDone: 'Enter: zur Lobby · Esc: zurück ins Menü'
 };
+// While a run is on, the game has the whole screen; the bar and help line come back over it only when paused or over.
+const chrome = () => mode !== 'game' || arena.paused || arena.over;
 function paint() {
   arenaCanvas.style.visibility = mode === 'game' ? '' : 'hidden';
+  appEl.classList.toggle('in-game', mode === 'game');
+  appEl.classList.toggle('chrome', chrome());
   menuBtn.hidden = mode !== 'game';
   styleBtn.hidden = mode === 'pick' || (mode === 'game' && !!racing);
   const raceDone = Race.state && Race.state.phase !== 'run';
@@ -135,7 +140,7 @@ function startGame(sel) {
     Room.game();
     sendToRoom(sel, Menu.pace, g);
   };
-  arena.resize(); paint();
+  paint(); arena.resize();
   appEl.focus();
 }
 // In a class or family room, the run goes to the room's leaderboard and the game-over screen shows the rank.
@@ -162,7 +167,7 @@ function startRace(m) {
   arena.countT = Math.max(0.001, -arena.race.clock());
   arena.raceView = Race.view();
   arena.onOver = g => { Room.game(); if (!g.won) Race.out(g.score); };
-  arena.resize(); paint();
+  paint(); arena.resize();
   appEl.focus();
 }
 // Leaving mid-race counts as being out.
@@ -196,14 +201,18 @@ function refocus() { if (mode === 'game') appEl.focus(); }
 // Browsers only start audio after a click or key press.
 for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, () => Sfx.unlock(), { capture: true, passive: true });
 
-// Full screen is offered in the browser; an installed app already has the whole screen.
+// Full screen is offered in the browser; an installed app already has the whole screen. Older iPad Safari only knows the webkit names.
 const installed = matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches;
-if (document.fullscreenEnabled && !installed) {
+const root = document.documentElement, fullEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+if ((document.fullscreenEnabled || document.webkitFullscreenEnabled) && !installed) {
   fullBtn.hidden = false;
   fullBtn.addEventListener('click', () => {
-    if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {});
+    if (fullEl()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else Promise.resolve((root.requestFullscreen || root.webkitRequestFullscreen).call(root, { navigationUI: 'hide' })).catch(() => {});
   });
-  document.addEventListener('fullscreenchange', () => { fullBtn.textContent = document.fullscreenElement ? 'Vollbild aus' : 'Vollbild'; refocus(); });
+  const changed = () => { fullBtn.textContent = fullEl() ? 'Vollbild aus' : 'Vollbild'; refocus(); };
+  document.addEventListener('fullscreenchange', changed);
+  document.addEventListener('webkitfullscreenchange', changed);
 }
 
 window.addEventListener('keydown', e => {
@@ -238,7 +247,7 @@ function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   try {
-    if (mode === 'game') { arena.frame(dt); arena.paused ? Music.calm(arena.style.music) : Music.follow(arena, arena.style.music); return; }
+    if (mode === 'game') { arena.frame(dt); if (chrome() !== appEl.classList.contains('chrome')) paint(); arena.paused ? Music.calm(arena.style.music) : Music.follow(arena, arena.style.music); return; }
     if (mode === 'menu') { Music.calm(arena.style.music); return; }
     // Picker: animate the visible tiles; the hovered or focused one plays its song.
     let song = arena.style.music;
